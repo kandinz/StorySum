@@ -21,7 +21,7 @@ class SettingsProvider extends ChangeNotifier {
   AppThemeMode _appThemeMode = AppThemeMode.dark; // Chế độ giao diện (Dark/Light/System/Sepia/Warm)
   bool _autoNextChapter = false; // Mặc định false, tự chuyển chương khi phát hết
   bool _translateContent = false; // Mặc định false, không dịch nội dung
-  int _audioPrefetchCount = AppConstants.defaultAudioPrefetchCount; // Mặc định 10 câu tải sẵn
+  int _audioPrefetchCount = AppConstants.defaultAudioPrefetchCount; // Mặc định 5 câu tải sẵn
 
   // AI Configuration (Multi-Provider: Gemini, ChatGPT, Claude, DeepSeek, MiMo, OpenRouter, Groq, Custom)
   List<AiProviderModel> _providers = AiProviderModel.defaultBuiltinProviders;

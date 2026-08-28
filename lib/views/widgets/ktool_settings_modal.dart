@@ -439,7 +439,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
         ),
         const SizedBox(height: 12),
 
-        // 3. Tự động chuyển chương & Hẹn giờ dừng phát
+        // 3. Tự động chuyển chương, Hẹn giờ dừng phát & Số câu tải trước audio
         _buildSectionHeader(
           icon: Icons.playlist_play_rounded,
           title: 'Tự Động & Hẹn Giờ',
@@ -479,130 +479,87 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
                   _buildSleepTimerDropdown(context, player, colors),
                 ],
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        // 4. Số câu tải sẵn audio (Prefetch)
-        _buildSectionHeader(
-          icon: Icons.queue_music_rounded,
-          title: 'Số câu tải sẵn audio',
-          trailing: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              color: colors.primary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              '${settings.audioPrefetchCount} câu',
-              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.primary),
-            ),
-          ),
-          colors: colors,
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: colors.cardBackground,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: colors.border),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Tải trước audio gối đầu',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: colors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Đang phát câu N thì tải sẵn tới câu N + ${settings.audioPrefetchCount}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: colors.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Stepper điều chỉnh số câu [-] [ 10 ] [+]
+              Divider(color: colors.border, height: 14),
               Row(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  InkWell(
-                    onTap: () {
-                      if (settings.audioPrefetchCount > 1) {
-                        settings.setAudioPrefetchCount(settings.audioPrefetchCount - 1);
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: colors.elevatedBackground,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: colors.border),
-                      ),
-                      child: Center(
-                        child: Icon(Icons.remove_rounded, size: 16, color: colors.textPrimary),
-                      ),
+                  Text(
+                    'Số câu tải trước audio',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textPrimary,
                     ),
                   ),
-                  InkWell(
-                    onTap: () => _showPrefetchCountDialog(context, settings, colors),
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      width: 44,
-                      height: 28,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: colors.elevatedBackground,
+                  // Stepper điều chỉnh số câu [-] [ 5 ] [+]
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        onTap: () {
+                          if (settings.audioPrefetchCount > 1) {
+                            settings.setAudioPrefetchCount(settings.audioPrefetchCount - 1);
+                          }
+                        },
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: colors.primary.withValues(alpha: 0.5)),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${settings.audioPrefetchCount}',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.bold,
-                            color: colors.primary,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: colors.elevatedBackground,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: colors.border),
+                          ),
+                          child: Center(
+                            child: Icon(Icons.remove_rounded, size: 16, color: colors.textPrimary),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () {
-                      if (settings.audioPrefetchCount < 50) {
-                        settings.setAudioPrefetchCount(settings.audioPrefetchCount + 1);
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: colors.elevatedBackground,
+                      InkWell(
+                        onTap: () => _showPrefetchCountDialog(context, settings, colors),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: colors.border),
+                        child: Container(
+                          width: 44,
+                          height: 28,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: colors.elevatedBackground,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: colors.primary.withValues(alpha: 0.5)),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${settings.audioPrefetchCount}',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.bold,
+                                color: colors.primary,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                      child: Center(
-                        child: Icon(Icons.add_rounded, size: 16, color: colors.textPrimary),
+                      InkWell(
+                        onTap: () {
+                          if (settings.audioPrefetchCount < 50) {
+                            settings.setAudioPrefetchCount(settings.audioPrefetchCount + 1);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: colors.elevatedBackground,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: colors.border),
+                          ),
+                          child: Center(
+                            child: Icon(Icons.add_rounded, size: 16, color: colors.textPrimary),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -1411,7 +1368,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
               Icon(Icons.queue_music_rounded, color: colors.primary, size: 20),
               const SizedBox(width: 8),
               Text(
-                'Số câu tải sẵn audio',
+                'Số câu tải trước audio',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colors.textPrimary),
               ),
             ],
@@ -1421,7 +1378,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Nhập số câu muốn tải trước khi phát audio (mặc định: 10 câu):',
+                'Nhập số câu muốn tải trước khi phát audio (mặc định: 5 câu):',
                 style: TextStyle(fontSize: 12, color: colors.textSecondary),
               ),
               const SizedBox(height: 12),
@@ -1453,7 +1410,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
-                children: [5, 10, 15, 20, 30].map((count) {
+                children: [3, 5, 10, 15, 20].map((count) {
                   final isCurrent = settings.audioPrefetchCount == count;
                   return InkWell(
                     onTap: () {

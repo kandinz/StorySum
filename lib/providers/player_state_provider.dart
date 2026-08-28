@@ -134,8 +134,10 @@ class PlayerStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> stop() async {
-    _isPausedByUser = false;
+  Future<void> stop({bool resetPause = false}) async {
+    if (resetPause) {
+      _isPausedByUser = false;
+    }
     await playerService.stop();
     _isPlaying = false;
     _currentPosition = Duration.zero;

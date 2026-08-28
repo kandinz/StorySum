@@ -390,10 +390,8 @@ class AppStateProvider extends ChangeNotifier {
     required SettingsProvider settings,
     required PlayerStateProvider player,
   }) async {
-    await player.stop();
-    player.resetManualPause();
+    await player.stop(resetPause: false);
     _generationSessionId++; // Hủy tiến trình tạo câu cũ
-    final shouldAutoPlay = settings.autoNextChapter;
 
     final currentNum = _currentChapter?.chapterNumber ?? int.tryParse(chapterController.text.trim()) ?? 1;
     final prevChapterNum = currentNum > 1 ? currentNum - 1 : 1;
@@ -407,7 +405,7 @@ class AppStateProvider extends ChangeNotifier {
         settings: settings,
         player: player,
         focusLastPlayed: true,
-        autoPlay: shouldAutoPlay,
+        autoPlay: false,
       );
       return;
     }
@@ -415,7 +413,7 @@ class AppStateProvider extends ChangeNotifier {
     await reloadCurrentChapter(
       settings: settings,
       player: player,
-      autoPlay: shouldAutoPlay,
+      autoPlay: false,
     );
   }
 
@@ -425,9 +423,11 @@ class AppStateProvider extends ChangeNotifier {
     required PlayerStateProvider player,
     bool isAutoNext = false,
   }) async {
-    await player.stop();
+    final wasPlaying = player.isPlaying;
+    // Chỉ tự phát tiếp khi chuyển tự động khi nghe hết chương (isAutoNext) VÀ người dùng không bấm pause
+    final shouldAutoPlay = isAutoNext && !player.isPausedByUser && wasPlaying;
+    await player.stop(resetPause: false);
     _generationSessionId++; // Hủy tiến trình tạo câu cũ
-    final shouldAutoPlay = isAutoNext || settings.autoNextChapter;
 
     final currentNum = _currentChapter?.chapterNumber ?? int.tryParse(chapterController.text.trim()) ?? 1;
     final nextChapterNum = currentNum + 1;
@@ -469,16 +469,15 @@ class AppStateProvider extends ChangeNotifier {
       _isProcessing = false;
       notifyListeners();
 
-      // Bắt đầu tạo tuần tự các câu còn thiếu trong nền
-      _startSequentialGeneration(
-        chapter: preloaded.chapter,
-        settings: settings,
-        player: player,
-        startIndex: _activeSentenceIndex ?? 0,
-      );
-
-      // Nếu chuyển chương tự động khi nghe hết chương trước hoặc đang bật autoplay -> tiếp tục phát tiếp
+      // Nếu chuyển chương tự động khi nghe hết chương trước -> tiếp tục phát tiếp
       if (shouldAutoPlay) {
+        _startSequentialGeneration(
+          chapter: preloaded.chapter,
+          settings: settings,
+          player: player,
+          startIndex: _activeSentenceIndex ?? 0,
+        );
+
         if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isEmpty && _currentChapter != null) {
           await summarizeCurrentChapter(settings);
         }
@@ -495,7 +494,7 @@ class AppStateProvider extends ChangeNotifier {
       }
 
       // Tiếp tục tải ngầm chương kế tiếp
-      _preloadNextChapter(settings: settings);
+      _preloadNextChapter(settings: settings, player: player);
       return;
     }
 
@@ -536,7 +535,7 @@ class AppStateProvider extends ChangeNotifier {
     bool forceRefresh = false,
     bool? autoPlay,
   }) async {
-    final shouldAutoPlay = autoPlay ?? settings.autoNextChapter;
+    final shouldAutoPlay = (autoPlay ?? false) && !player.isPausedByUser;
     if (_isProcessing) return;
 
     final inputUrl = urlController.text.trim();
@@ -570,8 +569,7 @@ class AppStateProvider extends ChangeNotifier {
       urlController.text = targetUrl;
     }
 
-    await player.stop();
-    player.resetManualPause();
+    await player.stop(resetPause: false);
     _generationSessionId++; // Hủy tiến trình tạo cũ
     _activeSentenceIndex = null;
 
@@ -658,10 +656,17 @@ class AppStateProvider extends ChangeNotifier {
       notifyListeners();
 
       // Tự động tải ngầm trước chương kế tiếp
-      _preloadNextChapter(settings: settings);
+      _preloadNextChapter(settings: settings, player: player);
 
-      // Tự động phát nếu đang bật autoplay
+      // Tự động phát nếu đang bật autoplay và không pause
       if (shouldAutoPlay) {
+        _startSequentialGeneration(
+          chapter: chapter,
+          settings: settings,
+          player: player,
+          startIndex: _activeSentenceIndex ?? 0,
+        );
+
         if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isEmpty) {
           await summarizeCurrentChapter(settings);
         }
@@ -818,8 +823,8 @@ class AppStateProvider extends ChangeNotifier {
 
     notifyListeners();
 
-    // 4. Nếu có PlayerStateProvider, tự động khởi chạy tiến trình sinh audio cho tab đang chọn
-    if (player != null) {
+    // 4. Nếu đang phát và không pause, khởi chạy tiến trình sinh audio cho tab đang chọn
+    if (player != null && player.isPlaying && !player.isPausedByUser) {
       _startSequentialGeneration(
         chapter: _currentChapter!,
         settings: settings,
@@ -879,6 +884,7 @@ class AppStateProvider extends ChangeNotifier {
     required PlayerStateProvider player,
     int startIndex = 0,
   }) {
+    if (!player.isPlaying || player.isPausedByUser) return;
     final sessionId = ++_generationSessionId;
 
     if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isNotEmpty) {
@@ -908,6 +914,7 @@ class AppStateProvider extends ChangeNotifier {
     required int sessionId,
     int startIndex = 0,
   }) {
+    if (!player.isPlaying || player.isPausedByUser) return;
     Future.microtask(() async {
       final prefetchLimit = settings.audioPrefetchCount;
       final maxIndex = (startIndex + prefetchLimit < _summarySentences.length)
@@ -915,7 +922,7 @@ class AppStateProvider extends ChangeNotifier {
           : _summarySentences.length - 1;
 
       for (int i = startIndex; i <= maxIndex; i++) {
-        if (sessionId != _generationSessionId || i >= _summarySentences.length) return;
+        if (sessionId != _generationSessionId || !player.isPlaying || player.isPausedByUser || i >= _summarySentences.length) return;
 
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: chapter.storyTitle,
@@ -939,7 +946,7 @@ class AppStateProvider extends ChangeNotifier {
             audioType: 'summary',
           );
 
-          if (sessionId != _generationSessionId) return;
+          if (sessionId != _generationSessionId || !player.isPlaying || player.isPausedByUser) return;
 
           _summarySentences[i] = _summarySentences[i].copyWith(
             audioPath: path,
@@ -963,6 +970,7 @@ class AppStateProvider extends ChangeNotifier {
     required int sessionId,
     int startIndex = 0,
   }) {
+    if (!player.isPlaying || player.isPausedByUser) return;
     Future.microtask(() async {
       final prefetchLimit = settings.audioPrefetchCount;
       final maxIndex = (startIndex + prefetchLimit < _contentSentences.length)
@@ -970,7 +978,7 @@ class AppStateProvider extends ChangeNotifier {
           : _contentSentences.length - 1;
 
       for (int i = startIndex; i <= maxIndex; i++) {
-        if (sessionId != _generationSessionId || i >= _contentSentences.length) return;
+        if (sessionId != _generationSessionId || !player.isPlaying || player.isPausedByUser || i >= _contentSentences.length) return;
 
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: chapter.storyTitle,
@@ -994,7 +1002,7 @@ class AppStateProvider extends ChangeNotifier {
             audioType: 'content',
           );
 
-          if (sessionId != _generationSessionId) return;
+          if (sessionId != _generationSessionId || !player.isPlaying || player.isPausedByUser) return;
 
           _contentSentences[i] = _contentSentences[i].copyWith(
             audioPath: path,
@@ -1017,7 +1025,7 @@ class AppStateProvider extends ChangeNotifier {
     required SettingsProvider settings,
     required PlayerStateProvider player,
   }) {
-    if (_currentChapter == null) return;
+    if (_currentChapter == null || !player.isPlaying || player.isPausedByUser) return;
     final sessionId = _generationSessionId;
     final list = sourceType == AudioSourceType.summary ? _summarySentences : _contentSentences;
     final prefetchLimit = settings.audioPrefetchCount;
@@ -1025,7 +1033,7 @@ class AppStateProvider extends ChangeNotifier {
 
     Future.microtask(() async {
       for (int i = fromIndex; i <= maxIndex; i++) {
-        if (sessionId != _generationSessionId || _currentChapter == null) return;
+        if (sessionId != _generationSessionId || _currentChapter == null || !player.isPlaying || player.isPausedByUser) return;
         if (i < 0 || i >= list.length) continue;
 
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
@@ -1059,7 +1067,7 @@ class AppStateProvider extends ChangeNotifier {
             audioType: sourceType == AudioSourceType.summary ? 'summary' : 'content',
           );
 
-          if (sessionId != _generationSessionId) return;
+          if (sessionId != _generationSessionId || _currentChapter == null || !player.isPlaying || player.isPausedByUser) return;
 
           if (sourceType == AudioSourceType.summary) {
             _summarySentences[i] = _summarySentences[i].copyWith(
@@ -1236,13 +1244,16 @@ class AppStateProvider extends ChangeNotifier {
 
     // 1. Nếu đang phát:
     if (player.isPlaying) {
-      // Nếu đang phát đúng tab đang xem -> Tạm dừng
+      // Nếu đang phát đúng tab đang xem -> Tạm dừng (Hủy ngay lập tức mọi tiến trình sinh audio)
       if (_activeAudioSource == targetSource) {
-        await player.togglePlayPause();
+        _generationSessionId++;
+        _preloadTaskId++;
+        await player.pause();
+        notifyListeners();
         return;
       }
       // Nếu đang phát tab khác nhưng người dùng bấm Play ở tab này -> Chuyển sang phát tab này
-      await player.stop();
+      await player.stop(resetPause: false);
     }
 
     // 2. Tự động bật tính năng autoplay (tự chuyển & phát chương tiếp theo) khi bấm Play
@@ -1250,16 +1261,22 @@ class AppStateProvider extends ChangeNotifier {
       await settings.setAutoNextChapter(true);
     }
 
-    // 3. Nếu đang tạm dừng và cùng nguồn audio trước đó:
+    // 3. Nếu đang tạm dừng và cùng nguồn audio trước đó -> Tiếp tục phát và nạp trước lookahead
     if (player.currentAudioPath != null &&
         _activeSentenceIndex != null &&
         _activeAudioSource == targetSource &&
         player.isPausedByUser) {
-      await player.togglePlayPause();
+      await player.play();
+      ensureLookaheadAudio(
+        sourceType: targetSource,
+        fromIndex: _activeSentenceIndex!,
+        settings: settings,
+        player: player,
+      );
       return;
     }
 
-    // 3. Nếu chuyển sang tab Tóm tắt mà chưa có tóm tắt -> tự động tóm tắt rồi phát
+    // 4. Nếu chuyển sang tab Tóm tắt mà chưa có tóm tắt -> tự động tóm tắt rồi phát
     if (targetSource == AudioSourceType.summary && _summarySentences.isEmpty && _currentChapter != null) {
       await summarizeCurrentChapter(settings);
     }
@@ -1288,10 +1305,9 @@ class AppStateProvider extends ChangeNotifier {
   }) async {
     if (_activeAudioSource == newSource) return;
 
-    final wasPlaying = player.isPlaying;
-    if (wasPlaying) {
-      await player.stop();
-      player.resetManualPause();
+    final wasPlaying = player.isPlaying && !player.isPausedByUser;
+    if (player.isPlaying) {
+      await player.stop(resetPause: false);
     }
 
     _activeAudioSource = newSource;
@@ -1317,18 +1333,17 @@ class AppStateProvider extends ChangeNotifier {
     _activeSentenceIndex = targetIdx;
     notifyListeners();
 
-    // 3. Khởi chạy tiến trình sinh tuần tự audio cho tab mới bắt đầu từ targetIdx
-    if (_currentChapter != null) {
-      _startSequentialGeneration(
-        chapter: _currentChapter!,
-        settings: settings,
-        player: player,
-        startIndex: targetIdx,
-      );
-    }
+    // 3. Nếu trước đó đang phát -> tiếp tục sinh audio và phát tiếp tab mới
+    if (wasPlaying) {
+      if (_currentChapter != null) {
+        _startSequentialGeneration(
+          chapter: _currentChapter!,
+          settings: settings,
+          player: player,
+          startIndex: targetIdx,
+        );
+      }
 
-    // 4. Nếu trước đó đang phát hoặc autoplay đang bật -> phát ngay audio từ targetIdx của tab mới
-    if (wasPlaying || settings.autoNextChapter) {
       if (list.isNotEmpty) {
         await playSentence(
           sourceType: newSource,
@@ -1339,8 +1354,8 @@ class AppStateProvider extends ChangeNotifier {
       }
     }
 
-    // 5. Kích hoạt tự tải trước chương tiếp theo (bao gồm tóm tắt nếu tab tóm tắt đang chọn)
-    _preloadNextChapter(settings: settings);
+    // 4. Kích hoạt tự tải trước chương tiếp theo
+    _preloadNextChapter(settings: settings, player: player);
   }
 
   /// Tự động tóm tắt chương hiện tại nếu chưa có bản tóm tắt nào
@@ -1423,7 +1438,10 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   /// Tải ngầm trước nội dung, tóm tắt và audio của chương tiếp theo
-  Future<void> _preloadNextChapter({required SettingsProvider settings}) async {
+  Future<void> _preloadNextChapter({
+    required SettingsProvider settings,
+    PlayerStateProvider? player,
+  }) async {
     final currentNum = _currentChapter?.chapterNumber ?? int.tryParse(chapterController.text.trim()) ?? 1;
     final nextChapterNum = currentNum + 1;
     final currentStoryTitle = _currentChapter?.storyTitle ?? '';
@@ -1439,11 +1457,14 @@ class AppStateProvider extends ChangeNotifier {
         // Tiếp tục xuống dưới để tạo tóm tắt
       } else {
         // Đảm bảo audio theo đúng tab đang chọn được nạp sẵn
-        _preloadAudioForChapter(
-          preloaded: _preloadedNextChapter!,
-          settings: settings,
-          taskId: _preloadTaskId,
-        );
+        if (player != null && player.isPlaying && !player.isPausedByUser) {
+          _preloadAudioForChapter(
+            preloaded: _preloadedNextChapter!,
+            settings: settings,
+            taskId: _preloadTaskId,
+            player: player,
+          );
+        }
         return;
       }
     }
@@ -1540,12 +1561,15 @@ class AppStateProvider extends ChangeNotifier {
       _preloadStatusMessage = 'Chương $nextChapterNum đã có sẵn trong Đã Lưu';
       notifyListeners();
 
-      // Sinh ngầm audio nếu chưa có theo đúng tab đang chọn
-      _preloadAudioForChapter(
-        preloaded: preloaded,
-        settings: settings,
-        taskId: taskId,
-      );
+      // Sinh ngầm audio nếu chưa có theo đúng tab đang chọn và đang phát
+      if (player != null && player.isPlaying && !player.isPausedByUser) {
+        _preloadAudioForChapter(
+          preloaded: preloaded,
+          settings: settings,
+          taskId: taskId,
+          player: player,
+        );
+      }
       return;
     }
 
@@ -1592,6 +1616,7 @@ class AppStateProvider extends ChangeNotifier {
       baseUrl: baseUrl,
       existingDbChapter: existingDbChapter,
       settings: settings,
+      player: player,
     );
     _inFlightPreloadFuture = taskFuture;
     await taskFuture;
@@ -1604,6 +1629,7 @@ class AppStateProvider extends ChangeNotifier {
     required String baseUrl,
     required ChapterModel? existingDbChapter,
     required SettingsProvider settings,
+    PlayerStateProvider? player,
   }) async {
     try {
       ChapterModel chapter;
@@ -1733,12 +1759,15 @@ class AppStateProvider extends ChangeNotifier {
       _preloadStatusMessage = 'Đang tạo trước audio chương $nextChapterNum...';
       notifyListeners();
 
-      // CHUYỂN NGẦM AUDIO CHƯƠNG TIẾP THEO THEO TAB ĐANG CHỌN
-      await _preloadAudioForChapter(
-        preloaded: preloaded,
-        settings: settings,
-        taskId: taskId,
-      );
+      // CHUYỂN NGẦM AUDIO CHƯƠNG TIẾP THEO THEO TAB ĐANG CHỌN (NẾU ĐANG PHÁT)
+      if (player != null && player.isPlaying && !player.isPausedByUser) {
+        await _preloadAudioForChapter(
+          preloaded: preloaded,
+          settings: settings,
+          taskId: taskId,
+          player: player,
+        );
+      }
 
       if (taskId == _preloadTaskId) {
         _preloadStatusMessage = 'Chương $nextChapterNum đã tải xong & có sẵn audio!';
@@ -1766,7 +1795,9 @@ class AppStateProvider extends ChangeNotifier {
     required PreloadedChapter preloaded,
     required SettingsProvider settings,
     required int taskId,
+    PlayerStateProvider? player,
   }) async {
+    if (player != null && (!player.isPlaying || player.isPausedByUser)) return;
     final chapter = preloaded.chapter;
     final prefetchLimit = settings.audioPrefetchCount;
 
@@ -1774,7 +1805,7 @@ class AppStateProvider extends ChangeNotifier {
     if (_activeAudioSource == AudioSourceType.summary && preloaded.summarySentences.isNotEmpty) {
       final limit = preloaded.summarySentences.length < prefetchLimit ? preloaded.summarySentences.length : prefetchLimit;
       for (int i = 0; i < limit; i++) {
-        if (taskId != _preloadTaskId) return;
+        if (taskId != _preloadTaskId || (player != null && (!player.isPlaying || player.isPausedByUser))) return;
 
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: chapter.storyTitle,
@@ -1794,7 +1825,7 @@ class AppStateProvider extends ChangeNotifier {
             settings: settings,
             audioType: 'summary',
           );
-          if (taskId != _preloadTaskId) return;
+          if (taskId != _preloadTaskId || (player != null && (!player.isPlaying || player.isPausedByUser))) return;
           if (path != null) {
             preloaded.summarySentences[i] = preloaded.summarySentences[i].copyWith(
               audioPath: path,
@@ -1810,7 +1841,7 @@ class AppStateProvider extends ChangeNotifier {
     if (_activeAudioSource == AudioSourceType.content && preloaded.contentSentences.isNotEmpty) {
       final limit = preloaded.contentSentences.length < prefetchLimit ? preloaded.contentSentences.length : prefetchLimit;
       for (int i = 0; i < limit; i++) {
-        if (taskId != _preloadTaskId) return;
+        if (taskId != _preloadTaskId || (player != null && (!player.isPlaying || player.isPausedByUser))) return;
 
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: chapter.storyTitle,
@@ -1830,7 +1861,7 @@ class AppStateProvider extends ChangeNotifier {
             settings: settings,
             audioType: 'content',
           );
-          if (taskId != _preloadTaskId) return;
+          if (taskId != _preloadTaskId || (player != null && (!player.isPlaying || player.isPausedByUser))) return;
           if (path != null) {
             preloaded.contentSentences[i] = preloaded.contentSentences[i].copyWith(
               audioPath: path,
@@ -1842,19 +1873,17 @@ class AppStateProvider extends ChangeNotifier {
       }
     }
   }
-
   /// Nạp chương từ mục Đã Lưu với tùy chọn focus vào câu đã phát lần cuối
   Future<void> loadSavedChapter(
     SavedAudioItem item, {
     required SettingsProvider settings,
     required PlayerStateProvider player,
     bool focusLastPlayed = true,
-    bool? autoPlay,
+    bool autoPlay = false,
   }) async {
-    final shouldAutoPlay = autoPlay ?? settings.autoNextChapter;
+    final shouldAutoPlay = autoPlay && !player.isPausedByUser;
     final sessionId = ++_generationSessionId;
-    await player.stop();
-    player.resetManualPause();
+    await player.stop(resetPause: false);
 
     _isProcessing = true;
     _currentStatusMessage = 'Đang tải lại chương đã lưu...';
@@ -2018,18 +2047,18 @@ class AppStateProvider extends ChangeNotifier {
       _isProcessing = false;
       notifyListeners();
 
-      // Khởi chạy tiến trình sinh tuần tự audio nền cho phần được chọn
-      _startSequentialGeneration(
-        chapter: chapter,
-        settings: settings,
-        player: player,
-        startIndex: targetSentenceIndex,
-      );
+      // Tự động tải ngầm trước chương kế tiếp
+      _preloadNextChapter(settings: settings, player: player);
 
-      _preloadNextChapter(settings: settings);
-
-      // Tự động phát nếu autoplay được bật
+      // Tự động phát nếu autoplay được bật và không pause
       if (shouldAutoPlay) {
+        _startSequentialGeneration(
+          chapter: chapter,
+          settings: settings,
+          player: player,
+          startIndex: targetSentenceIndex,
+        );
+
         final currentPlayList = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
         if (currentPlayList.isNotEmpty) {
           playSentence(
