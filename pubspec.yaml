@@ -1,0 +1,69 @@
+name: app_story
+description: "StorySum - Story Crawler, AI Summary & TTS Audio Application for Android (Ktool Inspired)"
+publish_to: 'none'
+version: 1.0.40+41
+
+
+
+
+
+
+
+
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & Styling
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+
+  # State Management
+  provider: ^6.1.2
+
+  # Networking & Scraping
+  http: ^1.3.0
+  html: ^0.15.5
+
+  # Audio & Background Playback
+  just_audio: ^0.9.46
+  audio_service: ^0.18.18
+  audio_session: ^0.1.25
+
+  # Local Storage & Database
+  shared_preferences: ^2.5.3
+  sqflite: ^2.4.2
+  path: ^1.9.1
+  path_provider: ^2.1.5
+
+  # Utilities & Helpers
+  file_picker: ^10.3.3
+  permission_handler: ^11.4.0
+  share_plus: ^10.1.4
+  sherpa_onnx: ^1.13.6
+  archive: ^4.2.0
+  encrypt: ^5.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: false
+  image_path: "assets/icons/Logo.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/icons/
+    - assets/models/
+    - assets/onnx/
