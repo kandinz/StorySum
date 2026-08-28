@@ -482,6 +482,133 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
             ],
           ),
         ),
+        const SizedBox(height: 12),
+
+        // 4. Số câu tải sẵn audio (Prefetch)
+        _buildSectionHeader(
+          icon: Icons.queue_music_rounded,
+          title: 'Số câu tải sẵn audio',
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: colors.primary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              '${settings.audioPrefetchCount} câu',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.primary),
+            ),
+          ),
+          colors: colors,
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: colors.cardBackground,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: colors.border),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Tải trước audio gối đầu',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Đang phát câu N thì tải sẵn tới câu N + ${settings.audioPrefetchCount}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: colors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Stepper điều chỉnh số câu [-] [ 10 ] [+]
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InkWell(
+                    onTap: () {
+                      if (settings.audioPrefetchCount > 1) {
+                        settings.setAudioPrefetchCount(settings.audioPrefetchCount - 1);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: colors.elevatedBackground,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: Center(
+                        child: Icon(Icons.remove_rounded, size: 16, color: colors.textPrimary),
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => _showPrefetchCountDialog(context, settings, colors),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      width: 44,
+                      height: 28,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: colors.elevatedBackground,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: colors.primary.withValues(alpha: 0.5)),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${settings.audioPrefetchCount}',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            color: colors.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () {
+                      if (settings.audioPrefetchCount < 50) {
+                        settings.setAudioPrefetchCount(settings.audioPrefetchCount + 1);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: colors.elevatedBackground,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: colors.border),
+                      ),
+                      child: Center(
+                        child: Icon(Icons.add_rounded, size: 16, color: colors.textPrimary),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: 16),
 
         // Đường phân cách giữa Audio và Đọc truyện
@@ -1265,6 +1392,118 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
           ],
         ),
       ),
+    );
+  }
+
+  void _showPrefetchCountDialog(BuildContext context, SettingsProvider settings, AppThemeColors colors) {
+    final controller = TextEditingController(text: settings.audioPrefetchCount.toString());
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          backgroundColor: colors.background,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: colors.border),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.queue_music_rounded, color: colors.primary, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Số câu tải sẵn audio',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colors.textPrimary),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Nhập số câu muốn tải trước khi phát audio (mặc định: 10 câu):',
+                style: TextStyle(fontSize: 12, color: colors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                autofocus: true,
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colors.textPrimary),
+                decoration: InputDecoration(
+                  hintText: 'Nhập số câu (1 - 50)',
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  fillColor: colors.cardBackground,
+                  filled: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: colors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: colors.primary, width: 1.5),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Gợi ý nhanh:',
+                style: TextStyle(fontSize: 11, color: colors.textMuted),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: [5, 10, 15, 20, 30].map((count) {
+                  final isCurrent = settings.audioPrefetchCount == count;
+                  return InkWell(
+                    onTap: () {
+                      controller.text = count.toString();
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isCurrent ? colors.primary : colors.cardBackground,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: isCurrent ? colors.primary : colors.border),
+                      ),
+                      child: Text(
+                        '$count câu',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                          color: isCurrent ? Colors.white : colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text('Hủy', style: TextStyle(color: colors.textMuted)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: colors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () {
+                final val = int.tryParse(controller.text.trim());
+                if (val != null && val >= 1) {
+                  settings.setAudioPrefetchCount(val);
+                }
+                Navigator.pop(dialogCtx);
+              },
+              child: const Text('Lưu'),
+            ),
+          ],
+        );
+      },
     );
   }
 

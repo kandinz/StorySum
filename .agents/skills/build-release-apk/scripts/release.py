@@ -164,7 +164,12 @@ def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, r
             else:
                 print(f"[WARN] Failed to delete old {asset_name}: {del_res.status_code}")
                     
-        upload_url = f"https://uploads.github.com/repos/{owner}/{repo}/releases/{release_id}/assets?name={asset_name}"
+        raw_upload_url = release_data.get("upload_url", "").split("{")[0]
+        if raw_upload_url:
+            upload_url = f"{raw_upload_url}?name={asset_name}"
+        else:
+            upload_url = f"https://uploads.github.com/repos/{owner}/{repo}/releases/{release_id}/assets?name={asset_name}"
+            
         upload_headers = {
             "Authorization": f"token {token}",
             "Content-Type": "application/vnd.android.package-archive",
@@ -173,12 +178,30 @@ def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, r
         
         print(f"[INFO] Uploading {asset_name} to release...")
         with open(apk_path, "rb") as f:
-            upload_res = requests.post(upload_url, headers=upload_headers, data=f)
+            data = f.read()
+            
+        target_url = upload_url
+        current_headers = dict(upload_headers)
+        
+        while True:
+            upload_res = requests.post(target_url, headers=current_headers, data=data, allow_redirects=False)
+            if upload_res.status_code in (301, 302, 307, 308):
+                loc = upload_res.headers.get("Location") or upload_res.headers.get("location")
+                if not loc:
+                    print(f"[WARN] Redirect response {upload_res.status_code} without Location header: {upload_res.headers}")
+                    break
+                target_url = loc
+                print(f"[INFO] Following redirect ({upload_res.status_code}) to storage...")
+                if "objects.githubusercontent.com" in target_url or "amazonaws.com" in target_url or "s3" in target_url:
+                    current_headers.pop("Authorization", None)
+                continue
+            break
             
         if upload_res.status_code in (200, 201):
-            asset_info = upload_res.json()
+            asset_info = upload_res.json() if upload_res.text else {}
             print(f"[SUCCESS] Uploaded {asset_name} successfully!")
-            print(f"[DOWNLOAD URL] {asset_info.get('browser_download_url')}")
+            if asset_info.get('browser_download_url'):
+                print(f"[DOWNLOAD URL] {asset_info.get('browser_download_url')}")
         else:
             raise RuntimeError(f"Failed to upload asset {asset_name}: {upload_res.status_code} - {upload_res.text}")
 

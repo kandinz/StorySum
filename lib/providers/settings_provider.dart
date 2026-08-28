@@ -21,6 +21,7 @@ class SettingsProvider extends ChangeNotifier {
   AppThemeMode _appThemeMode = AppThemeMode.dark; // Chế độ giao diện (Dark/Light/System/Sepia/Warm)
   bool _autoNextChapter = false; // Mặc định false, tự chuyển chương khi phát hết
   bool _translateContent = false; // Mặc định false, không dịch nội dung
+  int _audioPrefetchCount = AppConstants.defaultAudioPrefetchCount; // Mặc định 10 câu tải sẵn
 
   // AI Configuration (Multi-Provider: Gemini, ChatGPT, Claude, DeepSeek, MiMo, OpenRouter, Groq, Custom)
   List<AiProviderModel> _providers = AiProviderModel.defaultBuiltinProviders;
@@ -57,6 +58,7 @@ class SettingsProvider extends ChangeNotifier {
   AppThemeMode get appThemeMode => _appThemeMode;
   bool get autoNextChapter => _autoNextChapter;
   bool get translateContent => _translateContent;
+  int get audioPrefetchCount => _audioPrefetchCount;
   List<VoiceModel> get availableVoices => _availableVoices;
 
   // AI & Providers Getters
@@ -113,6 +115,7 @@ class SettingsProvider extends ChangeNotifier {
 
     _autoNextChapter = _prefs.getBool(AppConstants.keyAutoNextChapter) ?? false;
     _translateContent = _prefs.getBool(AppConstants.keyTranslateContent) ?? false;
+    _audioPrefetchCount = _prefs.getInt(AppConstants.keyAudioPrefetchCount) ?? AppConstants.defaultAudioPrefetchCount;
 
     // 1. Tải danh sách AI Providers từ SharedPreferences
     final providersJson = _prefs.getStringList(AppConstants.keyAiProvidersJson) ?? [];
@@ -495,6 +498,13 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> setTranslateContent(bool val) async {
     _translateContent = val;
     await _prefs.setBool(AppConstants.keyTranslateContent, _translateContent);
+    notifyListeners();
+  }
+
+  Future<void> setAudioPrefetchCount(int count) async {
+    final cleanCount = count.clamp(1, 100);
+    _audioPrefetchCount = cleanCount;
+    await _prefs.setInt(AppConstants.keyAudioPrefetchCount, cleanCount);
     notifyListeners();
   }
 

@@ -122,11 +122,11 @@ class DatabaseHelper {
     final existing = await getChapterByStoryAndNumber(chapter.storyTitle, chapter.chapterNumber);
     final toSave = existing != null
         ? chapter.copyWith(
-            lastPlayedSentenceIndex: chapter.lastPlayedSentenceIndex > 0 ? chapter.lastPlayedSentenceIndex : existing.lastPlayedSentenceIndex,
-            lastPlayedSummaryIndex: chapter.lastPlayedSummaryIndex > 0 ? chapter.lastPlayedSummaryIndex : existing.lastPlayedSummaryIndex,
-            lastPlayedContentIndex: chapter.lastPlayedContentIndex > 0 ? chapter.lastPlayedContentIndex : existing.lastPlayedContentIndex,
-            lastPlayedSource: existing.lastPlayedSource,
-            lastPlayedAt: existing.lastPlayedAt,
+            lastPlayedSentenceIndex: chapter.lastPlayedAt != null ? chapter.lastPlayedSentenceIndex : (chapter.lastPlayedSentenceIndex > 0 ? chapter.lastPlayedSentenceIndex : existing.lastPlayedSentenceIndex),
+            lastPlayedSummaryIndex: chapter.lastPlayedAt != null ? chapter.lastPlayedSummaryIndex : (chapter.lastPlayedSummaryIndex > 0 ? chapter.lastPlayedSummaryIndex : existing.lastPlayedSummaryIndex),
+            lastPlayedContentIndex: chapter.lastPlayedAt != null ? chapter.lastPlayedContentIndex : (chapter.lastPlayedContentIndex > 0 ? chapter.lastPlayedContentIndex : existing.lastPlayedContentIndex),
+            lastPlayedSource: chapter.lastPlayedAt != null ? chapter.lastPlayedSource : existing.lastPlayedSource,
+            lastPlayedAt: chapter.lastPlayedAt ?? existing.lastPlayedAt,
           )
         : chapter;
 
@@ -234,11 +234,11 @@ class DatabaseHelper {
     final existing = await getSavedAudioByStoryAndNumber(audio.storyTitle, audio.chapterNumber);
     final toSave = existing != null
         ? audio.copyWith(
-            lastPlayedSentenceIndex: audio.lastPlayedSentenceIndex > 0 ? audio.lastPlayedSentenceIndex : existing.lastPlayedSentenceIndex,
-            lastPlayedSummaryIndex: audio.lastPlayedSummaryIndex > 0 ? audio.lastPlayedSummaryIndex : existing.lastPlayedSummaryIndex,
-            lastPlayedContentIndex: audio.lastPlayedContentIndex > 0 ? audio.lastPlayedContentIndex : existing.lastPlayedContentIndex,
-            lastPlayedSource: existing.lastPlayedSource,
-            lastPlayedAt: existing.lastPlayedAt,
+            lastPlayedSentenceIndex: audio.lastPlayedAt != null ? audio.lastPlayedSentenceIndex : (audio.lastPlayedSentenceIndex > 0 ? audio.lastPlayedSentenceIndex : existing.lastPlayedSentenceIndex),
+            lastPlayedSummaryIndex: audio.lastPlayedAt != null ? audio.lastPlayedSummaryIndex : (audio.lastPlayedSummaryIndex > 0 ? audio.lastPlayedSummaryIndex : existing.lastPlayedSummaryIndex),
+            lastPlayedContentIndex: audio.lastPlayedAt != null ? audio.lastPlayedContentIndex : (audio.lastPlayedContentIndex > 0 ? audio.lastPlayedContentIndex : existing.lastPlayedContentIndex),
+            lastPlayedSource: audio.lastPlayedAt != null ? audio.lastPlayedSource : existing.lastPlayedSource,
+            lastPlayedAt: audio.lastPlayedAt ?? existing.lastPlayedAt,
           )
         : audio;
 

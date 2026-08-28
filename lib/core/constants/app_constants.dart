@@ -1,6 +1,6 @@
 class AppConstants {
   static const String appName = 'StorySum';
-  static const String appVersion = '1.0.36';
+  static const String appVersion = '1.0.41';
 
   // Default Story Link & Chapter
   static const String defaultStoryUrl = 'https://xtruyen.vn/truyen/pham-nhan-tu-tien/chuong-1/';
@@ -34,6 +34,8 @@ class AppConstants {
   static const String keyRate = 'voice_rate';
   static const String keyVolume = 'voice_volume';
   static const String keyAutoNextChapter = 'auto_next_chapter';
+  static const String keyAudioPrefetchCount = 'audio_prefetch_count';
+  static const int defaultAudioPrefetchCount = 10;
   static const String keySleepTimerMinutes = 'sleep_timer_minutes';
   static const int defaultSleepTimerMinutes = 30;
 

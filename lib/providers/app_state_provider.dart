@@ -95,14 +95,14 @@ class AppStateProvider extends ChangeNotifier {
   int get currentContentSentenceIndex => _currentContentSentenceIndex;
   AudioSourceType get activeAudioSource => _activeAudioSource;
 
-  /// Tính toán index câu hợp lệ (Nếu là câu cuối thì đổi lại thành index = 0 / câu đầu tiên)
+  /// Tính toán index câu hợp lệ (Nếu là câu cuối hoặc đã phát hết thì đổi lại thành index = 0 / câu đầu tiên)
   int getEffectiveSentenceIndex(int savedIndex, int totalSentences) {
     if (totalSentences <= 0) return 0;
-    if (savedIndex >= totalSentences - 1) {
-      return 0; // Nếu là last thì đổi lại thành index = 0
+    if (savedIndex >= totalSentences) {
+      return 0; // Đã phát hết toàn bộ chương -> phát lại từ câu đầu tiên (index 0)
     }
-    if (savedIndex < 0 || savedIndex >= totalSentences) {
-      return 0;
+    if (savedIndex < 0) {
+      return 0; // Chưa phát -> câu đầu tiên (index 0)
     }
     return savedIndex;
   }
@@ -900,7 +900,7 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
-  /// Tiến trình tạo audio riêng cho các câu tóm tắt (tối ưu đệm tránh nghẽn luồng)
+  /// Tiến trình tạo audio riêng cho các câu tóm tắt (tải trước số câu theo setting prefetch)
   void _startSummaryAudioGeneration({
     required ChapterModel chapter,
     required SettingsProvider settings,
@@ -909,8 +909,13 @@ class AppStateProvider extends ChangeNotifier {
     int startIndex = 0,
   }) {
     Future.microtask(() async {
-      for (int i = startIndex; i < _summarySentences.length; i++) {
-        if (sessionId != _generationSessionId) return;
+      final prefetchLimit = settings.audioPrefetchCount;
+      final maxIndex = (startIndex + prefetchLimit < _summarySentences.length)
+          ? startIndex + prefetchLimit
+          : _summarySentences.length - 1;
+
+      for (int i = startIndex; i <= maxIndex; i++) {
+        if (sessionId != _generationSessionId || i >= _summarySentences.length) return;
 
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: chapter.storyTitle,
@@ -950,7 +955,7 @@ class AppStateProvider extends ChangeNotifier {
     });
   }
 
-  /// Tiến trình tạo audio riêng cho các câu toàn văn nội dung (tối ưu đệm tránh nghẽn luồng)
+  /// Tiến trình tạo audio riêng cho các câu toàn văn nội dung (tải trước số câu theo setting prefetch)
   void _startContentAudioGeneration({
     required ChapterModel chapter,
     required SettingsProvider settings,
@@ -959,8 +964,13 @@ class AppStateProvider extends ChangeNotifier {
     int startIndex = 0,
   }) {
     Future.microtask(() async {
-      for (int i = startIndex; i < _contentSentences.length; i++) {
-        if (sessionId != _generationSessionId) return;
+      final prefetchLimit = settings.audioPrefetchCount;
+      final maxIndex = (startIndex + prefetchLimit < _contentSentences.length)
+          ? startIndex + prefetchLimit
+          : _contentSentences.length - 1;
+
+      for (int i = startIndex; i <= maxIndex; i++) {
+        if (sessionId != _generationSessionId || i >= _contentSentences.length) return;
 
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: chapter.storyTitle,
@@ -1000,7 +1010,7 @@ class AppStateProvider extends ChangeNotifier {
     });
   }
 
-  /// Đảm bảo nạp trước buffer âm thanh cho các câu kế tiếp (Lookahead 4 câu)
+  /// Đảm bảo nạp trước buffer âm thanh cho các câu kế tiếp (Lookahead theo prefetchCount)
   void ensureLookaheadAudio({
     required AudioSourceType sourceType,
     required int fromIndex,
@@ -1010,7 +1020,8 @@ class AppStateProvider extends ChangeNotifier {
     if (_currentChapter == null) return;
     final sessionId = _generationSessionId;
     final list = sourceType == AudioSourceType.summary ? _summarySentences : _contentSentences;
-    final maxIndex = (fromIndex + 4 < list.length) ? fromIndex + 4 : list.length - 1;
+    final prefetchLimit = settings.audioPrefetchCount;
+    final maxIndex = (fromIndex + prefetchLimit < list.length) ? fromIndex + prefetchLimit : list.length - 1;
 
     Future.microtask(() async {
       for (int i = fromIndex; i <= maxIndex; i++) {
@@ -1152,6 +1163,14 @@ class AppStateProvider extends ChangeNotifier {
         sentenceIndex: sentenceIndex,
       );
     }
+
+    // Tự động duy trì nạp trước lookahead buffer theo setting
+    ensureLookaheadAudio(
+      sourceType: sourceType,
+      fromIndex: sentenceIndex,
+      settings: settings,
+      player: player,
+    );
   }
 
   /// Xử lý khi kết thúc phát một câu audio -> Tự động phát câu tiếp theo liên tục không nghỉ
@@ -1189,12 +1208,12 @@ class AppStateProvider extends ChangeNotifier {
       _activeSentenceIndex = null;
       notifyListeners();
 
-      // Reset lại vị trí đã lưu của chương này về 0 để lần sau mở lại sẽ phát lại từ đầu
+      // Lưu trạng thái đã hoàn thành chương (sentenceIndex = list.length -> biểu thị 154/154)
       if (_currentChapter != null) {
-        _saveLastPlayedPosition(
+        await _saveLastPlayedPosition(
           storyTitle: _currentChapter!.storyTitle,
           chapterNumber: _currentChapter!.chapterNumber,
-          sentenceIndex: 0,
+          sentenceIndex: list.length,
           sourceType: _activeAudioSource,
           storyUrl: _currentChapter!.sourceUrl,
         );
@@ -1419,6 +1438,12 @@ class AppStateProvider extends ChangeNotifier {
           (_preloadedNextChapter!.summary == null || _preloadedNextChapter!.summary!.summaryText.trim().isEmpty)) {
         // Tiếp tục xuống dưới để tạo tóm tắt
       } else {
+        // Đảm bảo audio theo đúng tab đang chọn được nạp sẵn
+        _preloadAudioForChapter(
+          preloaded: _preloadedNextChapter!,
+          settings: settings,
+          taskId: _preloadTaskId,
+        );
         return;
       }
     }
@@ -1515,7 +1540,7 @@ class AppStateProvider extends ChangeNotifier {
       _preloadStatusMessage = 'Chương $nextChapterNum đã có sẵn trong Đã Lưu';
       notifyListeners();
 
-      // Sinh ngầm audio nếu chưa có
+      // Sinh ngầm audio nếu chưa có theo đúng tab đang chọn
       _preloadAudioForChapter(
         preloaded: preloaded,
         settings: settings,
@@ -1708,7 +1733,7 @@ class AppStateProvider extends ChangeNotifier {
       _preloadStatusMessage = 'Đang tạo trước audio chương $nextChapterNum...';
       notifyListeners();
 
-      // CHUYỂN NGẦM AUDIO CHƯƠNG TIẾP THEO NGAY LẬP TỨC TRONG NỀN
+      // CHUYỂN NGẦM AUDIO CHƯƠNG TIẾP THEO THEO TAB ĐANG CHỌN
       await _preloadAudioForChapter(
         preloaded: preloaded,
         settings: settings,
@@ -1736,17 +1761,18 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
-  /// Sinh ngầm audio offline cho các câu của chương preload
+  /// Sinh ngầm audio offline cho các câu của chương preload theo đúng tab đang chọn
   Future<void> _preloadAudioForChapter({
     required PreloadedChapter preloaded,
     required SettingsProvider settings,
     required int taskId,
   }) async {
     final chapter = preloaded.chapter;
+    final prefetchLimit = settings.audioPrefetchCount;
 
     // 1. Tự động sinh audio cho Tóm tắt nếu tab tóm tắt đang chọn và có câu tóm tắt
     if (_activeAudioSource == AudioSourceType.summary && preloaded.summarySentences.isNotEmpty) {
-      final limit = preloaded.summarySentences.length < 5 ? preloaded.summarySentences.length : 5;
+      final limit = preloaded.summarySentences.length < prefetchLimit ? preloaded.summarySentences.length : prefetchLimit;
       for (int i = 0; i < limit; i++) {
         if (taskId != _preloadTaskId) return;
 
@@ -1782,7 +1808,7 @@ class AppStateProvider extends ChangeNotifier {
 
     // 2. Tự động sinh audio cho Toàn văn nội dung nếu tab nội dung đang chọn
     if (_activeAudioSource == AudioSourceType.content && preloaded.contentSentences.isNotEmpty) {
-      final limit = preloaded.contentSentences.length < 5 ? preloaded.contentSentences.length : 5;
+      final limit = preloaded.contentSentences.length < prefetchLimit ? preloaded.contentSentences.length : prefetchLimit;
       for (int i = 0; i < limit; i++) {
         if (taskId != _preloadTaskId) return;
 

@@ -692,6 +692,8 @@ class _StorySearchModalState extends State<StorySearchModal> {
     int sIdx = chapter.lastPlayedSummaryIndex;
     int cIdx = chapter.lastPlayedContentIndex;
     String source = chapter.lastPlayedSource;
+    bool sPlayed = chapter.lastPlayedAt != null || sIdx > 0;
+    bool cPlayed = chapter.lastPlayedAt != null || cIdx > 0;
 
     if (isCurrentActive) {
       if (appState.summarySentences.isNotEmpty) sTotal = appState.summarySentences.length;
@@ -699,10 +701,27 @@ class _StorySearchModalState extends State<StorySearchModal> {
       sIdx = appState.currentSummarySentenceIndex;
       cIdx = appState.currentContentSentenceIndex;
       source = appState.activeAudioSource.name;
+
+      if (appState.activeSentenceIndex != null) {
+        if (appState.activeAudioSource == AudioSourceType.summary) {
+          sIdx = appState.activeSentenceIndex!;
+          sPlayed = true;
+        } else {
+          cIdx = appState.activeSentenceIndex!;
+          cPlayed = true;
+        }
+      }
     }
 
-    final sCur = sTotal > 0 ? (sIdx + 1).clamp(1, sTotal) : 0;
-    final cCur = cTotal > 0 ? (cIdx + 1).clamp(1, cTotal) : 0;
+    int calcProgress(int index, int total, bool isPlayed) {
+      if (total <= 0) return 0;
+      if (!isPlayed || index < 0) return 0;
+      if (index >= total) return total;
+      return index + 1;
+    }
+
+    final sCur = calcProgress(sIdx, sTotal, sPlayed);
+    final cCur = calcProgress(cIdx, cTotal, cPlayed);
 
     if (sTotal > 0 && cTotal > 0) {
       if (source == 'content') {
