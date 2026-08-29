@@ -14,6 +14,12 @@ enum StoryViewTab {
   content,
 }
 
+enum NavTab {
+  library,
+  reader,
+  settings,
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
@@ -28,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   AudioSourceType? _lastActiveSourceType;
   Timer? _chapterDebounceTimer;
   StoryViewTab _activeTab = StoryViewTab.summary;
+  NavTab _activeNavTab = NavTab.reader;
 
   GlobalKey _getSentenceKey(AudioSourceType type, int index) {
     final keyStr = '${type.name}_$index';
@@ -103,276 +110,546 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 10),
-
-            // 1. Header: Story Title + Chapter Subtitle + Sleep Timer Badge + Search Icon Button
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Tiêu đề truyện & Tên chương bên dưới
-                  Expanded(
-                    child: Tooltip(
-                      message: appState.hasActiveChapter ? 'Chạm để tải lại chương' : 'Chạm để tìm kiếm hoặc dán link',
-                      child: InkWell(
-                        onTap: () {
-                          if (appState.hasActiveChapter) {
-                            if (!appState.isProcessing) {
-                              appState.reloadCurrentChapter(settings: settings, player: player);
-                            }
-                          } else {
-                            StorySearchModal.show(context);
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(8),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                          child: Row(
-                            children: [
-                              Icon(
-                                appState.hasActiveChapter ? Icons.menu_book_rounded : Icons.auto_stories_rounded,
-                                size: 20,
-                                color: colors.primary,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      appState.hasActiveChapter ? appState.displayStoryTitle : 'StorySum',
-                                      style: TextStyle(
-                                        fontSize: 15.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: appState.hasActiveChapter ? colors.textPrimary : colors.primary,
-                                        letterSpacing: -0.2,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    if (appState.hasActiveChapter && appState.displayChapterSubtitle.isNotEmpty) ...[
-                                      const SizedBox(height: 1.5),
-                                      Text(
-                                        appState.displayChapterSubtitle,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                          color: colors.textSecondary,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Badge Hẹn giờ dừng phát khi đang bật
-                  if (player.sleepTimerEnabled) ...[
-                    const SizedBox(width: 6),
-                    InkWell(
-                      onTap: () => KtoolSettingsModal.show(context),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: colors.primary.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: colors.primary.withValues(alpha: 0.4), width: 0.8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.timer_outlined, size: 12, color: colors.primary),
-                            const SizedBox(width: 3),
-                            Text(
-                              player.formattedSleepTimerRemaining,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: colors.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(width: 6),
-
-                  // Nút [ 🔍 ] (Tìm kiếm truyện & Dán link trên cùng bên phải)
-                  InkWell(
-                    onTap: () => StorySearchModal.show(context),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: colors.cardBackground,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: colors.border, width: 1.1),
-                      ),
-                      child: Center(
-                        child: Icon(Icons.search_rounded, color: colors.primary, size: 20),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            if (appState.isProcessing) ...[
-              const SizedBox(height: 6),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  children: [
-                    LinearProgressIndicator(
-                      value: appState.overallProgress > 0 ? appState.overallProgress : null,
-                      backgroundColor: colors.elevatedBackground,
-                      valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
-                      minHeight: 2.5,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      appState.currentStatusMessage,
-                      style: TextStyle(fontSize: 11, color: colors.accent),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 8),
-
-            // 2. Switcher Button qua lại giữa Tóm tắt và Nội dung (khi có chương truyện)
-            if (appState.hasActiveChapter)
-              _buildViewSwitcher(
-                activeTab: _activeTab,
-                appState: appState,
-                settings: settings,
-                colors: colors,
-                onTabChanged: (tab) {
-                  setState(() => _activeTab = tab);
-                  final targetSource = tab == StoryViewTab.summary
-                      ? AudioSourceType.summary
-                      : AudioSourceType.content;
-                  appState.switchAudioTab(targetSource, settings: settings, player: player);
-                },
-              ),
-
-            const SizedBox(height: 4),
-
-            // 3. Main Content View: Chỉ hiển thị Tóm tắt hoặc Nội dung theo tab đang chọn
+            // ==========================================
+            // BODY: Nội dung theo tab đang chọn
+            // ==========================================
             Expanded(
-              child: !appState.hasActiveChapter
-                  ? _buildEmptyInitialState(context, appState, settings, player, colors)
-                  : Stack(
-                      children: [
-                        _buildSelectedTabView(
-                          context: context,
-                          activeTab: _activeTab,
-                          appState: appState,
-                          settings: settings,
-                          player: player,
-                          colors: colors,
-                        ),
-                        Positioned(
-                          right: 22,
-                          bottom: 22,
-                          child: _buildScrollToTopButton(colors),
-                        ),
-                      ],
-                    ),
+              child: _activeNavTab == NavTab.library
+                  ? _buildLibraryTab(context, appState, settings, player, colors)
+                  : _activeNavTab == NavTab.settings
+                      ? _buildSettingsTab(context, colors)
+                      : _buildReaderTab(context, appState, settings, player, colors),
             ),
 
             // ==========================================
-            // 4. BOTTOM NAVIGATION & ACTION BAR
+            // BOTTOM ACTION BAR: chỉ hiển thị khi đang ở tab Đọc truyện
             // ==========================================
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: colors.background,
-                border: Border(
-                  top: BorderSide(color: colors.border, width: 1),
+            if (_activeNavTab == NavTab.reader)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: colors.background,
+                  border: Border(
+                    top: BorderSide(color: colors.border, width: 1),
+                  ),
                 ),
-              ),
-              child: Row(
-                children: [
-                  // Nút [ < ] (Chương trước)
-                  Expanded(
-                    flex: 2,
-                    child: _buildBottomNavButton(
-                      icon: Icons.chevron_left_rounded,
-                      colors: colors,
-                      onTap: appState.isProcessing
-                          ? null
-                          : () => appState.goToPreviousChapter(settings: settings, player: player),
+                child: Row(
+                  children: [
+                    // Nút [ < ] (Chương trước)
+                    Expanded(
+                      flex: 2,
+                      child: _buildBottomNavButton(
+                        icon: Icons.chevron_left_rounded,
+                        colors: colors,
+                        onTap: appState.isProcessing
+                            ? null
+                            : () => appState.goToPreviousChapter(settings: settings, player: player),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
+                    const SizedBox(width: 8),
 
-                  // Input nhập số chương
-                  _buildChapterInputField(
-                    appState: appState,
-                    settings: settings,
-                    player: player,
-                    colors: colors,
-                  ),
-                  const SizedBox(width: 8),
-
-                  // Nút [ ▶ / ⏸ ] (Phát / Tạm dừng audio) ở kế bên input chương - Tự động phát theo tab đang chọn
-                  _buildPlayPauseButton(
-                    isPlaying: player.isPlaying,
-                    colors: colors,
-                    onTap: () => appState.toggleMainPlayPause(
+                    // Input nhập số chương
+                    _buildChapterInputField(
+                      appState: appState,
                       settings: settings,
                       player: player,
-                      currentSource: _activeTab == StoryViewTab.summary
-                          ? AudioSourceType.summary
-                          : AudioSourceType.content,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-
-                  // Nút [ ⚙️ ] (Cài đặt / Popup Settings - icon gear răng cưa)
-                  _buildBottomIconButton(
-                    icon: Icons.settings_rounded,
-                    colors: colors,
-                    onTap: () => KtoolSettingsModal.show(context),
-                  ),
-                  const SizedBox(width: 8),
-
-                  // Nút [ > ] (Chương sau)
-                  Expanded(
-                    flex: 2,
-                    child: _buildBottomNavButton(
-                      icon: Icons.chevron_right_rounded,
                       colors: colors,
-                      onTap: appState.isProcessing
-                          ? null
-                          : () => appState.goToNextChapter(settings: settings, player: player),
-                      hasPreloaded: appState.hasPreloadedNext,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+
+                    // Nút [ ▶ / ⏸ ] (Phát / Tạm dừng audio)
+                    _buildPlayPauseButton(
+                      isPlaying: player.isPlaying,
+                      colors: colors,
+                      onTap: () => appState.toggleMainPlayPause(
+                        settings: settings,
+                        player: player,
+                        currentSource: _activeTab == StoryViewTab.summary
+                            ? AudioSourceType.summary
+                            : AudioSourceType.content,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+
+                    // Nút [ > ] (Chương sau)
+                    Expanded(
+                      flex: 2,
+                      child: _buildBottomNavButton(
+                        icon: Icons.chevron_right_rounded,
+                        colors: colors,
+                        onTap: appState.isProcessing
+                            ? null
+                            : () => appState.goToNextChapter(settings: settings, player: player),
+                        hasPreloaded: appState.hasPreloadedNext,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+
+            // ==========================================
+            // BOTTOM NAV BAR
+            // ==========================================
+            _buildBottomNavBar(colors),
           ],
         ),
       ),
     );
   }
+
+  /// Tab Kho truyện
+  Widget _buildLibraryTab(
+    BuildContext context,
+    AppStateProvider appState,
+    SettingsProvider settings,
+    PlayerStateProvider player,
+    AppThemeColors colors,
+  ) {
+    return Column(
+      children: [
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Icon(Icons.library_books_rounded, size: 20, color: colors.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Kho Truyện',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: colors.textPrimary,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: colors.primary.withValues(alpha: 0.3), width: 1.5),
+                    ),
+                    child: Icon(Icons.library_books_rounded, size: 36, color: colors.primary),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Tìm & Dán Link Truyện',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: colors.textPrimary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Dán liên kết chương truyện hợp lệ để bắt đầu đọc và nghe audio TTS.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colors.textMuted,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: colors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.search_rounded, size: 20),
+                      label: const Text(
+                        'Tìm Kiếm / Dán Link',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () => StorySearchModal.show(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Tab Đọc truyện
+  Widget _buildReaderTab(
+    BuildContext context,
+    AppStateProvider appState,
+    SettingsProvider settings,
+    PlayerStateProvider player,
+    AppThemeColors colors,
+  ) {
+    return Column(
+      children: [
+        const SizedBox(height: 10),
+
+        // 1. Header: Story Title + Chapter Subtitle + Sleep Timer Badge
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Tiêu đề truyện & Tên chương bên dưới
+              Expanded(
+                child: Tooltip(
+                  message: appState.hasActiveChapter ? 'Chạm để tải lại chương' : 'Chạm để tìm kiếm hoặc dán link',
+                  child: InkWell(
+                    onTap: () {
+                      if (appState.hasActiveChapter) {
+                        if (!appState.isProcessing) {
+                          appState.reloadCurrentChapter(settings: settings, player: player);
+                        }
+                      } else {
+                        setState(() => _activeNavTab = NavTab.library);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                      child: Row(
+                        children: [
+                          Icon(
+                            appState.hasActiveChapter ? Icons.menu_book_rounded : Icons.auto_stories_rounded,
+                            size: 20,
+                            color: colors.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  appState.hasActiveChapter ? appState.displayStoryTitle : 'StorySum',
+                                  style: TextStyle(
+                                    fontSize: 15.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: appState.hasActiveChapter ? colors.textPrimary : colors.primary,
+                                    letterSpacing: -0.2,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (appState.hasActiveChapter && appState.displayChapterSubtitle.isNotEmpty) ...[
+                                  const SizedBox(height: 1.5),
+                                  Text(
+                                    appState.displayChapterSubtitle,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: colors.textSecondary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Badge Hẹn giờ dừng phát khi đang bật
+              if (player.sleepTimerEnabled) ...[
+                const SizedBox(width: 6),
+                InkWell(
+                  onTap: () => KtoolSettingsModal.show(context),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colors.primary.withValues(alpha: 0.4), width: 0.8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.timer_outlined, size: 12, color: colors.primary),
+                        const SizedBox(width: 3),
+                        Text(
+                          player.formattedSleepTimerRemaining,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: colors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        if (appState.isProcessing) ...[
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              children: [
+                LinearProgressIndicator(
+                  value: appState.overallProgress > 0 ? appState.overallProgress : null,
+                  backgroundColor: colors.elevatedBackground,
+                  valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+                  minHeight: 2.5,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  appState.currentStatusMessage,
+                  style: TextStyle(fontSize: 11, color: colors.accent),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 8),
+
+        // 2. Switcher Button qua lại giữa Tóm tắt và Nội dung (khi có chương truyện)
+        if (appState.hasActiveChapter)
+          _buildViewSwitcher(
+            activeTab: _activeTab,
+            appState: appState,
+            settings: settings,
+            colors: colors,
+            onTabChanged: (tab) {
+              setState(() => _activeTab = tab);
+              final targetSource = tab == StoryViewTab.summary
+                  ? AudioSourceType.summary
+                  : AudioSourceType.content;
+              appState.switchAudioTab(targetSource, settings: settings, player: player);
+            },
+          ),
+
+        const SizedBox(height: 4),
+
+        // 3. Main Content View
+        Expanded(
+          child: !appState.hasActiveChapter
+              ? _buildEmptyInitialState(context, appState, settings, player, colors)
+              : Stack(
+                  children: [
+                    _buildSelectedTabView(
+                      context: context,
+                      activeTab: _activeTab,
+                      appState: appState,
+                      settings: settings,
+                      player: player,
+                      colors: colors,
+                    ),
+                    Positioned(
+                      right: 22,
+                      bottom: 22,
+                      child: _buildScrollToTopButton(colors),
+                    ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// Tab Cài đặt — mở Settings Modal ngay khi chuyển sang tab này
+  Widget _buildSettingsTab(BuildContext context, AppThemeColors colors) {
+    return Column(
+      children: [
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Icon(Icons.settings_rounded, size: 20, color: colors.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Cài Đặt',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: colors.textPrimary,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: colors.primary.withValues(alpha: 0.3), width: 1.5),
+                    ),
+                    child: Icon(Icons.settings_rounded, size: 36, color: colors.primary),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Cài Đặt Ứng Dụng',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: colors.textPrimary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tùy chỉnh theme, giọng đọc, tốc độ, font chữ và nhiều tuỳ chọn khác.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colors.textMuted,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: colors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.tune_rounded, size: 20),
+                      label: const Text(
+                        'Mở Cài Đặt',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () => KtoolSettingsModal.show(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Bottom Navigation Bar với 3 tab
+  Widget _buildBottomNavBar(AppThemeColors colors) {
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.background,
+        border: Border(
+          top: BorderSide(color: colors.border, width: 1),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              _buildNavItem(
+                icon: Icons.library_books_rounded,
+                label: 'Kho truyện',
+                tab: NavTab.library,
+                colors: colors,
+              ),
+              _buildNavItem(
+                icon: Icons.menu_book_rounded,
+                label: 'Đọc truyện',
+                tab: NavTab.reader,
+                colors: colors,
+              ),
+              _buildNavItem(
+                icon: Icons.settings_rounded,
+                label: 'Cài đặt',
+                tab: NavTab.settings,
+                colors: colors,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required IconData icon,
+    required String label,
+    required NavTab tab,
+    required AppThemeColors colors,
+  }) {
+    final isActive = _activeNavTab == tab;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          if (tab == NavTab.settings && _activeNavTab == NavTab.settings) {
+            // Nếu đang ở tab settings mà bấm lại thì mở modal
+            KtoolSettingsModal.show(context);
+            return;
+          }
+          setState(() => _activeNavTab = tab);
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 22,
+                color: isActive ? colors.primary : colors.textMuted,
+              ),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                  color: isActive ? colors.primary : colors.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
 
   /// Thanh chuyển đổi giữa Tóm tắt và Nội dung
   Widget _buildViewSwitcher({
@@ -858,29 +1135,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildBottomIconButton({
-    required IconData icon,
-    required AppThemeColors colors,
-    required VoidCallback? onTap,
-    Color? color,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: colors.cardBackground,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: colors.border, width: 1.2),
-        ),
-        child: Center(
-          child: Icon(icon, color: color ?? colors.textSecondary, size: 20),
-        ),
-      ),
-    );
-  }
 
   Widget _buildEmptyInitialState(
     BuildContext context,
