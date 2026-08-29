@@ -9,17 +9,23 @@ void main() async {
   try {
     final chapter = await crawler.crawlChapterFromUrl(tdmpUrl);
     print('SUCCESS TDMP!');
-    print('  ID: ${chapter.id}');
-    print('  Story: ${chapter.storyTitle}');
-    print('  Chapter: ${chapter.chapterTitle}');
+    print('  Story: "${chapter.storyTitle}"');
+    print('  Chapter: "${chapter.chapterTitle}"');
     print('  Word count: ${chapter.wordCount}');
-    print('  Paragraphs count: ${chapter.paragraphs.length}');
   } catch (e) {
     print('  TDMP Error: $e');
   }
 
   print('=============================================');
-  print('TEST 2: buildChapterUrl next chapter');
-  final nextUrl = crawler.buildChapterUrl(tdmpUrl, 2);
-  print('Next URL: $nextUrl');
+  print('TEST 2: Crawl mtruyen.net');
+  final mtruyenUrl = 'https://mtruyen.net/truyen/tien-nghich/chuong-25';
+  try {
+    final chapter = await crawler.crawlChapterFromUrl(mtruyenUrl);
+    print('SUCCESS MTRUYEN!');
+    print('  Story: "${chapter.storyTitle}"');
+    print('  Chapter: "${chapter.chapterTitle}"');
+    print('  Word count: ${chapter.wordCount}');
+  } catch (e) {
+    print('  MTRUYEN Error: $e');
+  }
 }

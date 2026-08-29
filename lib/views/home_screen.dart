@@ -35,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   AudioSourceType? _lastActiveSourceType;
   Timer? _chapterDebounceTimer;
   StoryViewTab _activeTab = StoryViewTab.summary;
-  NavTab _activeNavTab = NavTab.reader;
+  NavTab _activeNavTab = NavTab.library;
 
   GlobalKey _getSentenceKey(AudioSourceType type, int index) {
     final keyStr = '${type.name}_$index';
@@ -196,9 +196,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
 
             // ==========================================
-            // BOTTOM NAV BAR
+            // BOTTOM NAV BAR: 3 tab
             // ==========================================
-            _buildBottomNavBar(colors),
+            _buildBottomNavBar(appState, settings, player, colors),
           ],
         ),
       ),
@@ -412,7 +412,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Bottom Navigation Bar với 3 tab
-  Widget _buildBottomNavBar(AppThemeColors colors) {
+  Widget _buildBottomNavBar(AppStateProvider appState, SettingsProvider settings, PlayerStateProvider player, AppThemeColors colors) {
     return Container(
       decoration: BoxDecoration(
         color: colors.background,
@@ -431,18 +431,32 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: 'Kho truyện',
                 tab: NavTab.library,
                 colors: colors,
+                onTap: () => setState(() => _activeNavTab = NavTab.library),
               ),
               _buildNavItem(
                 icon: Icons.menu_book_rounded,
                 label: 'Đọc truyện',
                 tab: NavTab.reader,
                 colors: colors,
+                onTap: () {
+                  setState(() => _activeNavTab = NavTab.reader);
+                  if (!appState.hasActiveChapter) {
+                    appState.loadLastPlayedOrRecent(settings: settings, player: player);
+                  }
+                },
               ),
               _buildNavItem(
                 icon: Icons.settings_rounded,
                 label: 'Cài đặt',
                 tab: NavTab.settings,
                 colors: colors,
+                onTap: () {
+                  if (_activeNavTab == NavTab.settings) {
+                    KtoolSettingsModal.show(context);
+                    return;
+                  }
+                  setState(() => _activeNavTab = NavTab.settings);
+                },
               ),
             ],
           ),
@@ -456,18 +470,12 @@ class _HomeScreenState extends State<HomeScreen> {
     required String label,
     required NavTab tab,
     required AppThemeColors colors,
+    required VoidCallback onTap,
   }) {
     final isActive = _activeNavTab == tab;
     return Expanded(
       child: InkWell(
-        onTap: () {
-          if (tab == NavTab.settings && _activeNavTab == NavTab.settings) {
-            // Nếu đang ở tab settings mà bấm lại thì mở modal
-            KtoolSettingsModal.show(context);
-            return;
-          }
-          setState(() => _activeNavTab = tab);
-        },
+        onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1050,7 +1058,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Dán liên kết chương truyện hợp lệ để bắt đầu đọc và nghe audio TTS.\nVí dụ: https://truyendichmienphi.com/truyen/quy-bi-chi-chu/chuong/1',
+              'Vui lòng chọn truyện từ Kho truyện hoặc nhập liên kết để bắt đầu đọc và nghe audio.',
               style: TextStyle(
                 fontSize: 13,
                 color: colors.textMuted,
@@ -1068,12 +1076,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                icon: const Icon(Icons.link_rounded, size: 20),
+                icon: const Icon(Icons.library_books_rounded, size: 20),
                 label: const Text(
-                  'Dán Link & Tải Truyện',
+                  'Chọn Truyện Từ Kho Truyện',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
-                onPressed: () => StorySearchModal.show(context),
+                onPressed: () => setState(() => _activeNavTab = NavTab.library),
               ),
             ),
           ],

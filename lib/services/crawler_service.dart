@@ -432,6 +432,7 @@ class CrawlerService {
 
   /// Trích xuất tiêu đề truyện
   String _extractStoryTitle(dom.Document document, String url) {
+    // 1. Selector ưu tiên của các giao diện đọc truyện phổ biến
     final selectors = [
       '.reader__title a',
       '.reader__title',
@@ -443,43 +444,91 @@ class CrawlerService {
       '.book-title',
       '.story-title',
       'h1.title',
-      '.breadcrumb li a',
-      'ol.breadcrumb li a',
+      'h1.name',
     ];
 
     for (var sel in selectors) {
       try {
         final el = document.querySelector(sel);
         if (el != null && el.text.trim().isNotEmpty) {
-          return el.text.trim();
+          final txt = el.text.trim();
+          if (!txt.toLowerCase().startsWith('chương') && !txt.toLowerCase().startsWith('chap')) {
+            return txt;
+          }
         }
       } catch (_) {}
     }
 
-    // Kiểm tra các thẻ link trong breadcrumb (thường link thứ 2 là tên truyện)
+    // 2. Kiểm tra các thẻ h1 trong trang
     try {
-      final breadcrumbLinks = document.querySelectorAll('.breadcrumb a, nav.breadcrumb a');
-      if (breadcrumbLinks.length >= 2) {
-        final secondLink = breadcrumbLinks[1].text.trim();
-        if (secondLink.isNotEmpty && !secondLink.toLowerCase().contains('trang chủ')) {
-          return secondLink;
+      final h1List = document.querySelectorAll('h1');
+      for (var h1 in h1List) {
+        final txt = h1.text.trim();
+        if (txt.isNotEmpty &&
+            !txt.toLowerCase().startsWith('chương') &&
+            !txt.toLowerCase().startsWith('chap') &&
+            !txt.toLowerCase().startsWith('hồi')) {
+          return txt;
         }
       }
     } catch (_) {}
 
-    final metaTitle = document.querySelector('meta[property="og:title"]')?.attributes['content'];
-    if (metaTitle != null && metaTitle.isNotEmpty) {
-      // Hỗ trợ dạng: "Chương 1... – Vạn Cổ Thần Đế" hoặc "Vạn Cổ Thần Đế - Chương 1"
-      if (metaTitle.contains('–')) {
-        final parts = metaTitle.split('–');
-        if (parts.last.trim().isNotEmpty) return parts.last.trim();
+    // 3. Kiểm tra các link dẫn về trang thông tin truyện (a[href*="/truyen/"])
+    try {
+      final truyenLinks = document.querySelectorAll('a[href*="/truyen/"]');
+      for (var link in truyenLinks) {
+        final href = link.attributes['href'] ?? '';
+        // Bỏ qua link chương (/chuong-...)
+        if (!href.contains('/chuong-') && !href.contains('/chuong/')) {
+          final txt = link.text.trim();
+          if (txt.isNotEmpty &&
+              !txt.toLowerCase().contains('trước') &&
+              !txt.toLowerCase().contains('sau') &&
+              !txt.toLowerCase().contains('mục lục') &&
+              !txt.toLowerCase().startsWith('chương') &&
+              !txt.toLowerCase().startsWith('chap')) {
+            return txt;
+          }
+        }
       }
-      return metaTitle.split('-').first.split('|').first.trim();
-    }
+    } catch (_) {}
 
-    final docTitle = document.querySelector('title')?.text.trim();
-    if (docTitle != null && docTitle.isNotEmpty) {
-      return docTitle.split('-').first.split('|').first.trim();
+    // 4. Kiểm tra breadcrumbs
+    try {
+      final breadcrumbLinks = document.querySelectorAll('.breadcrumb a, nav.breadcrumb a, .breadcrumbs a, ol.breadcrumb a, ul.breadcrumb a');
+      for (var i = 1; i < breadcrumbLinks.length; i++) {
+        final txt = breadcrumbLinks[i].text.trim();
+        if (txt.isNotEmpty &&
+            !txt.toLowerCase().contains('trang chủ') &&
+            !txt.toLowerCase().contains('home') &&
+            !txt.toLowerCase().startsWith('chương') &&
+            !txt.toLowerCase().startsWith('chap')) {
+          return txt;
+        }
+      }
+    } catch (_) {}
+
+    // 5. Phân tích og:title hoặc title
+    String rawTitle = document.querySelector('meta[property="og:title"]')?.attributes['content'] ??
+        document.querySelector('title')?.text.trim() ??
+        '';
+
+    if (rawTitle.isNotEmpty) {
+      // Loại bỏ tên website sau dấu |
+      final cleanSite = rawTitle.split('|').first.trim();
+      final parts = cleanSite.split(RegExp(r'\s+[-–—]\s+'));
+      if (parts.length >= 2) {
+        // Dạng 1: "Chương 25 - Tiên Nghịch" -> Lấy "Tiên Nghịch"
+        if (parts.first.toLowerCase().contains('chương') || parts.first.toLowerCase().contains('chap')) {
+          return parts.last.trim();
+        }
+        // Dạng 2: "Tiên Nghịch - Chương 25" -> Lấy "Tiên Nghịch"
+        if (parts.last.toLowerCase().contains('chương') || parts.last.toLowerCase().contains('chap')) {
+          return parts.first.trim();
+        }
+        return parts.first.trim();
+      }
+      return cleanSite.split('-').first.trim();
     }
 
     return 'Truyện chữ';

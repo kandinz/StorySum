@@ -44,7 +44,6 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
   late TextEditingController _translatePromptController;
   String? _toastMessage;
   Timer? _toastTimer;
-  bool _isPreviewingBgm = false;
 
   void _showModalToast(String message) {
     _toastTimer?.cancel();
@@ -76,6 +75,12 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
     _toastTimer?.cancel();
     _summaryPromptController.dispose();
     _translatePromptController.dispose();
+    try {
+      final player = Provider.of<PlayerStateProvider>(context, listen: false);
+      if (player.isPreviewingBgm) {
+        player.stopBgmPreview();
+      }
+    } catch (_) {}
     super.dispose();
   }
 
@@ -492,15 +497,13 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
                     ),
                   ),
                   _buildActionButton(
-                    label: _isPreviewingBgm ? 'Dừng thử' : 'Nghe thử',
-                    icon: _isPreviewingBgm ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                    label: player.isPreviewingBgm ? 'Dừng thử' : 'Nghe thử',
+                    icon: player.isPreviewingBgm ? Icons.stop_rounded : Icons.play_arrow_rounded,
                     onTap: () async {
-                      if (_isPreviewingBgm) {
+                      if (player.isPreviewingBgm) {
                         await player.stopBgmPreview();
-                        if (mounted) setState(() => _isPreviewingBgm = false);
                       } else {
                         await player.playBgmPreview(settings.currentBgmTrack.url, isLocal: settings.currentBgmTrack.isLocal);
-                        if (mounted) setState(() => _isPreviewingBgm = true);
                       }
                     },
                     colors: colors,
@@ -1471,7 +1474,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
         await settings.setSelectedBgmTrack(val);
         final track = settings.currentBgmTrack;
         await player.setBgmTrack(track.url, isLocal: track.isLocal);
-        if (_isPreviewingBgm) {
+        if (player.isPreviewingBgm) {
           await player.playBgmPreview(track.url, isLocal: track.isLocal);
         }
       },

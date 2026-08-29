@@ -193,6 +193,7 @@ class PlayerStateProvider extends ChangeNotifier {
   // ==========================================
   bool get bgmEnabled => playerService.bgmEnabled;
   double get bgmVolume => playerService.bgmVolume;
+  bool get isPreviewingBgm => playerService.isPreviewingBgm;
 
   Future<void> setBgmEnabled(bool enabled) async {
     await playerService.setBgmEnabled(enabled);

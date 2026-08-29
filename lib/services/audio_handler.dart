@@ -25,6 +25,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   String? _currentBgmUrl;
   bool _isBgmLocal = false;
 
+  bool _isPreviewingBgm = false;
+
   MyAudioHandler() {
     _init();
   }
@@ -34,6 +36,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   bool get bgmEnabled => _bgmEnabled;
   double get bgmVolume => _bgmVolume;
   String? get currentBgmUrl => _currentBgmUrl;
+  bool get isPreviewingBgm => _isPreviewingBgm;
 
   void _init() {
     // Cài đặt lặp lại vô hạn cho Nhạc nền
@@ -77,6 +80,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   void _syncBgmWithVoice(bool isVoicePlaying) {
+    if (_isPreviewingBgm) return;
     if (_bgmEnabled && _currentBgmUrl != null && _currentBgmUrl!.isNotEmpty) {
       if (isVoicePlaying) {
         if (!_bgmPlayer.playing) {
@@ -128,6 +132,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   Future<void> playBgmPreview(String url, {bool isLocal = false}) async {
     try {
+      _isPreviewingBgm = true;
       if (isLocal) {
         await _bgmPlayer.setFilePath(url);
       } else {
@@ -141,8 +146,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   Future<void> stopBgmPreview() async {
     try {
-      await _bgmPlayer.pause();
-      if (_currentBgmUrl != null && _currentBgmUrl!.isNotEmpty) {
+      _isPreviewingBgm = false;
+      await _bgmPlayer.stop();
+      if (_bgmEnabled && _player.playing && _currentBgmUrl != null && _currentBgmUrl!.isNotEmpty) {
         if (_isBgmLocal) {
           await _bgmPlayer.setFilePath(_currentBgmUrl!);
         } else {
@@ -150,6 +156,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         }
         await _bgmPlayer.setLoopMode(LoopMode.all);
         await _bgmPlayer.setVolume(_bgmVolume);
+        await _bgmPlayer.play();
       }
     } catch (_) {}
   }

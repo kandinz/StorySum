@@ -22,6 +22,7 @@ class AudioPlayerService {
   // BGM Getters & Methods
   bool get bgmEnabled => audioHandler.bgmEnabled;
   double get bgmVolume => audioHandler.bgmVolume;
+  bool get isPreviewingBgm => audioHandler.isPreviewingBgm;
   Future<void> setBgmEnabled(bool enabled) => audioHandler.setBgmEnabled(enabled);
   Future<void> setBgmVolume(double volume) => audioHandler.setBgmVolume(volume);
   Future<void> setBgmTrack(String url, {bool isLocal = false}) => audioHandler.setBgmTrack(url, isLocal: isLocal);

@@ -24,13 +24,16 @@ class ChapterListModal extends StatefulWidget {
 
 class _ChapterListModalState extends State<ChapterListModal> {
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _urlController = TextEditingController();
   String _searchQuery = '';
   final Set<int> _expandedGroups = {};
   bool _hasInitializedExpansion = false;
+  bool _hasInitializedUrl = false;
 
   @override
   void dispose() {
     _searchController.dispose();
+    _urlController.dispose();
     super.dispose();
   }
 
@@ -83,6 +86,26 @@ class _ChapterListModalState extends State<ChapterListModal> {
 
     final currentStoryAudios = chapterMap.values.toList()
       ..sort((a, b) => a.chapterNumber.compareTo(b.chapterNumber));
+
+    // Khởi tạo URL truyện nếu có
+    if (!_hasInitializedUrl) {
+      String initialUrl = appState.urlController.text.trim();
+      if (initialUrl.isEmpty && appState.currentChapter?.sourceUrl.isNotEmpty == true) {
+        initialUrl = appState.currentChapter!.sourceUrl;
+      }
+      if (initialUrl.isEmpty) {
+        for (final chap in appState.historyChapters) {
+          if (AppStateProvider.isSameStory(chap.storyTitle, storyTitle) &&
+              chap.sourceUrl.isNotEmpty &&
+              !chap.sourceUrl.startsWith('file://')) {
+            initialUrl = chap.sourceUrl;
+            break;
+          }
+        }
+      }
+      _urlController.text = initialUrl;
+      _hasInitializedUrl = true;
+    }
 
     final currentChapterNum = appState.currentChapter?.chapterNumber ??
         int.tryParse(appState.chapterController.text.trim()) ??
@@ -247,6 +270,95 @@ class _ChapterListModalState extends State<ChapterListModal> {
           ],
 
           const SizedBox(height: 10),
+
+          // Ô nhập Link truyện & Nút Tải truyện (để tiếp tục tải các chương còn thiếu)
+          Container(
+            decoration: BoxDecoration(
+              color: colors.cardBackground,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colors.border),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            child: Row(
+              children: [
+                Icon(Icons.link_rounded, size: 18, color: colors.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: TextField(
+                    controller: _urlController,
+                    style: TextStyle(fontSize: 12.5, color: colors.textPrimary),
+                    decoration: InputDecoration(
+                      hintText: 'Nhập link truyện để tải chương còn thiếu...',
+                      hintStyle: TextStyle(color: colors.textMuted, fontSize: 11.5),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                SizedBox(
+                  height: 32,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isCrawlingThisStory ? Colors.redAccent : colors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    icon: Icon(
+                      isCrawlingThisStory ? Icons.stop_rounded : Icons.download_rounded,
+                      size: 15,
+                    ),
+                    label: Text(
+                      isCrawlingThisStory ? 'Dừng tải' : 'Tải truyện',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () async {
+                      if (isCrawlingThisStory) {
+                        appState.stopBackgroundCrawl();
+                        return;
+                      }
+
+                      final inputUrl = _urlController.text.trim();
+                      if (inputUrl.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Vui lòng nhập link truyện hợp lệ!'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                        return;
+                      }
+
+                      // Tìm chương còn thiếu nhỏ nhất trong dãy bắt đầu từ 1
+                      int nextStartChapter = 1;
+                      if (currentStoryAudios.isNotEmpty) {
+                        final existingNums = currentStoryAudios.map((c) => c.chapterNumber).toSet();
+                        final maxNum = currentStoryAudios.map((c) => c.chapterNumber).reduce((a, b) => a > b ? a : b);
+                        for (int i = 1; i <= maxNum + 1; i++) {
+                          if (!existingNums.contains(i)) {
+                            nextStartChapter = i;
+                            break;
+                          }
+                        }
+                      }
+
+                      appState.startBackgroundStoryCrawl(
+                        baseUrl: inputUrl,
+                        storyTitle: storyTitle,
+                        settings: settings,
+                        startChapter: nextStartChapter,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 8),
 
           // Ô tìm kiếm chương
           Container(

@@ -626,6 +626,56 @@ class AppStateProvider extends ChangeNotifier {
     );
   }
 
+  /// Nạp lại truyện/chương đã đọc lần trước nếu hiện tại chưa có chương nào đang mở
+  Future<bool> loadLastPlayedOrRecent({
+    required SettingsProvider settings,
+    required PlayerStateProvider player,
+  }) async {
+    if (_currentChapter != null) return true;
+
+    // 1. Kiểm tra truyện đọc gần nhất được lưu trong SharedPreferences / state
+    if (_lastPlayedStoryTitle != null && _lastPlayedStoryTitle!.trim().isNotEmpty) {
+      final title = _lastPlayedStoryTitle!.trim();
+      final targetNum = _lastPlayedChapterNumber;
+      await selectStory(title, settings: settings, player: player, targetChapterNumber: targetNum);
+      if (_currentChapter != null) return true;
+    }
+
+    // 2. Kiểm tra chương đọc gần nhất trong _savedAudios
+    if (_savedAudios.isNotEmpty) {
+      final sorted = List<SavedAudioItem>.from(_savedAudios);
+      sorted.sort((a, b) {
+        if (a.lastPlayedAt != null && b.lastPlayedAt != null) {
+          return b.lastPlayedAt!.compareTo(a.lastPlayedAt!);
+        }
+        if (a.lastPlayedAt != null) return -1;
+        if (b.lastPlayedAt != null) return 1;
+        return 0;
+      });
+      final item = sorted.first;
+      await loadSavedChapter(item, settings: settings, player: player, focusLastPlayed: true);
+      if (_currentChapter != null) return true;
+    }
+
+    // 3. Kiểm tra trong DB nếu _savedAudios chưa nạp
+    final allAudios = await db.getAllSavedAudios();
+    if (allAudios.isNotEmpty) {
+      allAudios.sort((a, b) {
+        if (a.lastPlayedAt != null && b.lastPlayedAt != null) {
+          return b.lastPlayedAt!.compareTo(a.lastPlayedAt!);
+        }
+        if (a.lastPlayedAt != null) return -1;
+        if (b.lastPlayedAt != null) return 1;
+        return 0;
+      });
+      final item = allAudios.first;
+      await loadSavedChapter(item, settings: settings, player: player, focusLastPlayed: true);
+      if (_currentChapter != null) return true;
+    }
+
+    return false;
+  }
+
   /// Chuyển thẳng đến chương được chỉ định (Ưu tiên nạp từ đã lưu nếu có, nếu chưa có thì tải ưu tiên ngay lập tức)
   Future<void> changeToChapter(
     int chapterNumber, {
@@ -953,7 +1003,7 @@ class AppStateProvider extends ChangeNotifier {
       _currentChapter = chapter;
       _headerTitle = _formatChapterHeader(chapter);
       await db.insertChapter(chapter);
-      _historyChapters.removeWhere((c) => c.storyTitle == chapter.storyTitle && c.chapterNumber == chapter.chapterNumber);
+      _historyChapters.removeWhere((c) => isSameStory(c.storyTitle, chapter.storyTitle) && c.chapterNumber == chapter.chapterNumber);
       _historyChapters.insert(0, chapter);
 
       // Tách câu nội dung ngay lập tức từ dữ liệu crawl được & gắn audio có sẵn
@@ -1052,7 +1102,7 @@ class AppStateProvider extends ChangeNotifier {
     );
 
     await db.insertAudio(audioItem);
-    _savedAudios.removeWhere((a) => a.storyTitle == chapter.storyTitle && a.chapterNumber == chapter.chapterNumber);
+    _savedAudios.removeWhere((a) => isSameStory(a.storyTitle, chapter.storyTitle) && a.chapterNumber == chapter.chapterNumber);
     _savedAudios.insert(0, audioItem);
     notifyListeners();
   }

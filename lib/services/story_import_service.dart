@@ -175,7 +175,13 @@ class StoryImportService {
     String fileName, {
     String sourcePath = '',
   }) {
-    final archive = ZipDecoder().decodeBytes(bytes);
+    final Archive archive;
+    try {
+      archive = ZipDecoder().decodeBytes(bytes, verify: false);
+    } catch (e) {
+      throw Exception('Không thể giải nén tệp EPUB (Tệp có thể bị hỏng hoặc định dạng không đúng): $e');
+    }
+
     final fileMap = <String, ArchiveFile>{};
     for (final file in archive) {
       if (file.isFile) {
@@ -183,14 +189,45 @@ class StoryImportService {
       }
     }
 
+    // Helper an toàn để lấy byte dữ liệu từ ArchiveFile
+    List<int>? getFileBytes(ArchiveFile? file) {
+      if (file == null) return null;
+      try {
+        final b = file.readBytes();
+        if (b != null) return b;
+      } catch (_) {}
+      return null;
+    }
+
+    // Helper tìm file trong fileMap không phân biệt hoa thường và đường dẫn chuẩn hóa
+    ArchiveFile? findFile(String targetPath) {
+      final normalized = targetPath.replaceAll('\\', '/');
+      if (fileMap.containsKey(normalized)) return fileMap[normalized];
+
+      final lower = normalized.toLowerCase();
+      for (final entry in fileMap.entries) {
+        if (entry.key.toLowerCase() == lower) return entry.value;
+      }
+
+      // Thử tìm theo tên file ở đuôi
+      final base = p.basename(normalized).toLowerCase();
+      for (final entry in fileMap.entries) {
+        if (entry.key.toLowerCase().endsWith('/$base') || entry.key.toLowerCase() == base) {
+          return entry.value;
+        }
+      }
+      return null;
+    }
+
     // 1. Tìm tệp container.xml để lấy đường dẫn tệp OPF
     String opfPath = '';
-    final containerFile = fileMap['META-INF/container.xml'];
-    if (containerFile != null) {
-      final containerXml = utf8.decode(containerFile.content as List<int>, allowMalformed: true);
+    final containerFile = findFile('META-INF/container.xml');
+    final containerBytes = getFileBytes(containerFile);
+    if (containerBytes != null) {
+      final containerXml = utf8.decode(containerBytes, allowMalformed: true);
       final match = RegExp(r'full-path="([^"]+)"', caseSensitive: false).firstMatch(containerXml);
       if (match != null) {
-        opfPath = match.group(1)!;
+        opfPath = Uri.decodeFull(match.group(1)!);
       }
     }
 
@@ -208,20 +245,28 @@ class StoryImportService {
       throw Exception('Tệp EPUB không hợp lệ: Không tìm thấy tệp kê khai OPF.');
     }
 
-    final opfFile = fileMap[opfPath];
-    if (opfFile == null) {
+    final opfFile = findFile(opfPath);
+    final opfBytes = getFileBytes(opfFile);
+    if (opfBytes == null) {
       throw Exception('Không thể mở tệp OPF trong EPUB: $opfPath');
     }
 
     final opfDir = p.dirname(opfPath).replaceAll('\\', '/');
-    final opfXml = utf8.decode(opfFile.content as List<int>, allowMalformed: true);
+    final opfXml = utf8.decode(opfBytes, allowMalformed: true);
     final opfDoc = html_parser.parse(opfXml);
 
     // 2. Trích xuất Tên truyện từ metadata
     String storyTitle = '';
-    final titleEl = opfDoc.querySelector('dc\\:title, title');
-    if (titleEl != null && titleEl.text.trim().isNotEmpty) {
-      storyTitle = titleEl.text.trim();
+    final titleElements = opfDoc.querySelectorAll('*').where((e) {
+      final name = e.localName?.toLowerCase() ?? '';
+      return name == 'title' || name == 'dc:title' || name.endsWith(':title');
+    });
+    for (final el in titleElements) {
+      final t = el.text.trim();
+      if (t.isNotEmpty) {
+        storyTitle = t;
+        break;
+      }
     }
     if (storyTitle.isEmpty) {
       storyTitle = p.basenameWithoutExtension(fileName).trim().replaceAll('_', ' ').replaceAll('-', ' ');
@@ -234,9 +279,12 @@ class StoryImportService {
     final manifestMap = <String, String>{};
     for (final item in opfDoc.querySelectorAll('item')) {
       final id = item.attributes['id'];
-      final href = item.attributes['href'];
+      var href = item.attributes['href'];
       if (id != null && href != null) {
-        manifestMap[id] = href;
+        if (href.contains('#')) {
+          href = href.split('#').first;
+        }
+        manifestMap[id] = Uri.decodeFull(href);
       }
     }
 
@@ -246,6 +294,16 @@ class StoryImportService {
       final idref = itemref.attributes['idref'];
       if (idref != null) {
         spineItemIds.add(idref);
+      }
+    }
+
+    // Fallback nếu spine rỗng: lấy tất cả các file xhtml/html từ manifestMap
+    if (spineItemIds.isEmpty) {
+      for (final entry in manifestMap.entries) {
+        final lower = entry.value.toLowerCase();
+        if (lower.endsWith('.xhtml') || lower.endsWith('.html') || lower.endsWith('.htm')) {
+          spineItemIds.add(entry.key);
+        }
       }
     }
 
@@ -262,23 +320,12 @@ class StoryImportService {
           : relativeHref;
       fullFilePath = p.normalize(fullFilePath).replaceAll('\\', '/');
 
-      ArchiveFile? chapterFile = fileMap[fullFilePath];
-      if (chapterFile == null) {
-        // Thử tìm theo tên không phân biệt hoa thường
-        final lower = fullFilePath.toLowerCase();
-        for (final k in fileMap.keys) {
-          if (k.toLowerCase() == lower || k.endsWith(relativeHref)) {
-            chapterFile = fileMap[k];
-            break;
-          }
-        }
-      }
-
+      ArchiveFile? chapterFile = findFile(fullFilePath);
       if (chapterFile == null) continue;
 
       try {
-        final rawBytes = chapterFile.readBytes();
-        if (rawBytes == null) continue;
+        final rawBytes = getFileBytes(chapterFile);
+        if (rawBytes == null || rawBytes.isEmpty) continue;
         final htmlContent = utf8.decode(rawBytes, allowMalformed: true);
         final doc = html_parser.parse(htmlContent);
 
@@ -328,8 +375,9 @@ class StoryImportService {
           finalContent = '$chapterTitle\n\n$finalContent';
         }
 
+        final safeHash = storyTitle.hashCode.abs();
         chapters.add(ChapterModel(
-          id: 'epub_${storyTitle.hashCode}_$chapterNumber',
+          id: 'epub_${safeHash}_$chapterNumber',
           storyTitle: storyTitle,
           chapterTitle: chapterTitle,
           chapterNumber: chapterNumber,

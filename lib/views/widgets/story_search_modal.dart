@@ -207,13 +207,56 @@ class _StorySearchModalState extends State<StorySearchModal> {
 
     final isUrlInput = _isUrl(_query);
 
-    // Gom nhóm danh sách mục đã lưu theo tên truyện
+    // Gom nhóm danh sách mục đã lưu theo tên truyện (kết hợp cả savedAudios và historyChapters)
     final Map<String, List<SavedAudioItem>> groupedMap = {};
     for (final item in appState.savedAudios) {
       final storyKey = item.storyTitle.trim().isNotEmpty
           ? item.storyTitle.trim()
           : 'Truyện chưa đặt tên';
-      groupedMap.putIfAbsent(storyKey, () => []).add(item);
+      
+      // Tìm xem đã có nhóm nào trùng tên truyện qua isSameStory chưa
+      String matchedKey = storyKey;
+      for (final existingKey in groupedMap.keys) {
+        if (AppStateProvider.isSameStory(existingKey, storyKey)) {
+          matchedKey = existingKey;
+          break;
+        }
+      }
+      groupedMap.putIfAbsent(matchedKey, () => []).add(item);
+    }
+
+    // Bổ sung các chương từ historyChapters nếu chưa có trong savedAudios
+    for (final chap in appState.historyChapters) {
+      final storyKey = chap.storyTitle.trim().isNotEmpty
+          ? chap.storyTitle.trim()
+          : 'Truyện chưa đặt tên';
+      
+      String matchedKey = storyKey;
+      for (final existingKey in groupedMap.keys) {
+        if (AppStateProvider.isSameStory(existingKey, storyKey)) {
+          matchedKey = existingKey;
+          break;
+        }
+      }
+
+      final list = groupedMap.putIfAbsent(matchedKey, () => []);
+      if (!list.any((a) => a.chapterNumber == chap.chapterNumber)) {
+        list.add(SavedAudioItem(
+          id: 'audio_${chap.id}',
+          title: chap.chapterTitle,
+          storyTitle: matchedKey,
+          chapterNumber: chap.chapterNumber,
+          audioPath: '',
+          content: chap.content,
+          chapterId: chap.id,
+          voiceUsed: settings.currentVoice.name,
+          lastPlayedSentenceIndex: chap.lastPlayedSentenceIndex,
+          lastPlayedSummaryIndex: chap.lastPlayedSummaryIndex,
+          lastPlayedContentIndex: chap.lastPlayedContentIndex,
+          lastPlayedSource: chap.lastPlayedSource,
+          lastPlayedAt: chap.lastPlayedAt,
+        ));
+      }
     }
 
     // Sắp xếp các chương trong mỗi truyện theo thứ tự số chương tăng dần
@@ -489,20 +532,20 @@ class _StorySearchModalState extends State<StorySearchModal> {
           const SizedBox(height: 12),
         ],
 
-        // Tiêu đề danh sách
-        Text(
-          _query.isEmpty
-              ? 'Danh sách truyện đã lưu:'
-              : (isUrlInput
-                  ? 'Hoặc chọn từ danh sách:'
-                  : 'Kết quả tìm kiếm ($totalStories truyện):'),
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.bold,
-            color: colors.textMuted,
+        // Tiêu đề danh sách khi có tìm kiếm
+        if (_query.isNotEmpty) ...[
+          Text(
+            isUrlInput
+                ? 'Hoặc chọn từ kho truyện:'
+                : 'Kết quả tìm kiếm ($totalStories truyện):',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+              color: colors.textMuted,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
+        ],
 
         // Danh sách truyện trong Kho truyện (chỉ chọn truyện, không chọn chương)
         Expanded(
