@@ -68,18 +68,17 @@ class _StorySearchModalState extends State<StorySearchModal> {
     return domainRegex.hasMatch(lower);
   }
 
-  Future<void> _pasteFromClipboard() async {
-    final data = await Clipboard.getData('text/plain');
-    if (data != null && data.text != null && data.text!.trim().isNotEmpty) {
-      final text = data.text!.trim();
-      setState(() {
-        _searchController.text = text;
-        _query = text;
-      });
-    }
-  }
+  /// Mở Modal "Thêm Truyện" với 2 cách: Thêm từ Link & Thêm từ File kèm hướng dẫn chi tiết
+  void _showAddStoryModal(
+    BuildContext context,
+    AppThemeColors colors,
+    AppStateProvider appState,
+    SettingsProvider settings,
+    PlayerStateProvider player,
+  ) {
+    final urlInputController = TextEditingController();
+    String? urlErrorText;
 
-  void _showHowToAddStoriesGuide(BuildContext context, AppThemeColors colors) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -87,180 +86,355 @@ class _StorySearchModalState extends State<StorySearchModal> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.75,
-          minChildSize: 0.5,
-          maxChildSize: 0.92,
-          expand: false,
-          builder: (sheetContext, scrollController) {
-            return SingleChildScrollView(
-              controller: scrollController,
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: colors.border,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
+      builder: (modalCtx) {
+        return StatefulBuilder(
+          builder: (sheetCtx, setModalState) {
+            final isImporting = appState.isImportingFile;
+
+            Future<void> pasteFromClipboard() async {
+              final data = await Clipboard.getData('text/plain');
+              if (data != null && data.text != null && data.text!.trim().isNotEmpty) {
+                setModalState(() {
+                  urlInputController.text = data.text!.trim();
+                  urlErrorText = null;
+                });
+              }
+            }
+
+            Future<void> handleLoadUrl() async {
+              final url = urlInputController.text.trim();
+              if (url.isEmpty) {
+                setModalState(() {
+                  urlErrorText = 'Vui lòng nhập đường dẫn chương truyện';
+                });
+                return;
+              }
+              if (!_isUrl(url)) {
+                setModalState(() {
+                  urlErrorText = 'Đường dẫn không hợp lệ. Vui lòng nhập link chương truyện';
+                });
+                return;
+              }
+
+              Navigator.pop(modalCtx);
+              if (!widget.asPage) {
+                Navigator.pop(context);
+              }
+              await appState.loadFromUrl(url, settings: settings, player: player);
+              widget.onStoryOpened?.call();
+            }
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.85,
+              minChildSize: 0.5,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (scrollCtx, scrollController) {
+                return SingleChildScrollView(
+                  controller: scrollController,
+                  padding: EdgeInsets.fromLTRB(
+                    18,
+                    12,
+                    18,
+                    MediaQuery.of(modalCtx).viewInsets.bottom + 24,
                   ),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: colors.border,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(Icons.help_outline_rounded, color: colors.primary, size: 22),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Hướng Dẫn Thêm Truyện',
-                            style: TextStyle(
-                              fontSize: 16.5,
-                              fontWeight: FontWeight.bold,
-                              color: colors.textPrimary,
-                            ),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: colors.primary.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(Icons.add_circle_outline_rounded, color: colors.primary, size: 20),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Thêm Truyện Mới',
+                                style: TextStyle(
+                                  fontSize: 16.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close_rounded, color: colors.textMuted, size: 20),
+                            onPressed: () => Navigator.pop(modalCtx),
                           ),
                         ],
                       ),
-                      IconButton(
-                        icon: Icon(Icons.close_rounded, color: colors.textMuted, size: 20),
-                        onPressed: () => Navigator.pop(ctx),
+                      Divider(color: colors.border, height: 18),
+
+                      // Cách 1: Thêm truyện từ Link web
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: colors.background,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: colors.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: colors.primary.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(Icons.link_rounded, color: colors.primary, size: 18),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  '1. Thêm truyện bằng Link web',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: colors.textPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Copy liên kết (URL) của một chương bất kỳ từ các website đọc truyện trực tuyến (như mtruyen.net, truyendichmienphi.com, webnovel.vn, truyenfull, xtruyen...) và dán vào ô bên dưới.',
+                              style: TextStyle(fontSize: 12.5, color: colors.textSecondary, height: 1.4),
+                            ),
+                            const SizedBox(height: 12),
+                            // Ô nhập dán link
+                            Container(
+                              decoration: BoxDecoration(
+                                color: colors.cardBackground,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: urlErrorText != null ? Colors.redAccent : colors.border,
+                                ),
+                              ),
+                              child: TextField(
+                                controller: urlInputController,
+                                style: TextStyle(fontSize: 13, color: colors.textPrimary),
+                                decoration: InputDecoration(
+                                  hintText: 'Dán link chương truyện tại đây...',
+                                  hintStyle: TextStyle(color: colors.textMuted, fontSize: 12),
+                                  prefixIcon: Icon(Icons.link_rounded, size: 18, color: colors.primary),
+                                  suffixIcon: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (urlInputController.text.isNotEmpty)
+                                        IconButton(
+                                          icon: Icon(Icons.clear_rounded, size: 16, color: colors.textMuted),
+                                          onPressed: () {
+                                            setModalState(() {
+                                              urlInputController.clear();
+                                              urlErrorText = null;
+                                            });
+                                          },
+                                        )
+                                      else
+                                        TextButton.icon(
+                                          icon: Icon(Icons.paste_rounded, size: 14, color: colors.primary),
+                                          label: Text(
+                                            'Dán',
+                                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.primary),
+                                          ),
+                                          onPressed: pasteFromClipboard,
+                                        ),
+                                    ],
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                  border: InputBorder.none,
+                                ),
+                                onChanged: (val) {
+                                  if (urlErrorText != null) {
+                                    setModalState(() => urlErrorText = null);
+                                  } else {
+                                    setModalState(() {});
+                                  }
+                                },
+                                onSubmitted: (_) => handleLoadUrl(),
+                              ),
+                            ),
+                            if (urlErrorText != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                urlErrorText!,
+                                style: const TextStyle(fontSize: 11, color: Colors.redAccent),
+                              ),
+                            ],
+                            const SizedBox(height: 10),
+                            // Nút Tải truyện từ Link
+                            SizedBox(
+                              width: double.infinity,
+                              height: 40,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: colors.primary,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  elevation: 0,
+                                ),
+                                icon: const Icon(Icons.download_rounded, size: 18),
+                                label: const Text(
+                                  'Tải & Đọc truyện từ Link',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                                onPressed: handleLoadUrl,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Ví dụ link hợp lệ (Chạm để dán thử ngay):',
+                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.textPrimary),
+                            ),
+                            const SizedBox(height: 6),
+                            ...sampleUrls.map((url) => InkWell(
+                                  onTap: () {
+                                    setModalState(() {
+                                      urlInputController.text = url;
+                                      urlErrorText = null;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 3),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.arrow_right_rounded, color: colors.primary, size: 16),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            url,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontFamily: 'monospace',
+                                              color: colors.textSecondary,
+                                              decoration: TextDecoration.underline,
+                                              decorationColor: colors.border,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Icon(Icons.touch_app_rounded, color: colors.primary, size: 14),
+                                      ],
+                                    ),
+                                  ),
+                                )),
+                          ],
+                        ),
+                      ),
+
+                      // Cách 2: Thêm truyện từ file TXT / EPUB
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: colors.background,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: colors.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: colors.primary.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(Icons.file_present_rounded, color: colors.primary, size: 18),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  '2. Thêm truyện từ File TXT / EPUB',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: colors.textPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Chọn tệp truyện đã tải về sẵn trên điện thoại của bạn:\n• Hỗ trợ đầy đủ định dạng văn bản (.txt) và sách điện tử (.epub).\n• Ứng dụng tự động nhận diện tiêu đề, phân chia chương và lưu trữ để bạn đọc và nghe offline.',
+                              style: TextStyle(fontSize: 12.5, color: colors.textSecondary, height: 1.4),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 42,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: colors.primary,
+                                  side: BorderSide(color: colors.primary.withValues(alpha: 0.6), width: 1.2),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  backgroundColor: colors.primary.withValues(alpha: 0.06),
+                                ),
+                                icon: isImporting
+                                    ? SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+                                        ),
+                                      )
+                                    : const Icon(Icons.upload_file_rounded, size: 20),
+                                label: Text(
+                                  isImporting
+                                      ? 'Đang thêm truyện từ file...'
+                                      : 'Chọn file từ thiết bị (TXT, EPUB)',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                                onPressed: isImporting
+                                    ? null
+                                    : () async {
+                                        final success = await appState.importStoryFromFile(
+                                          settings: settings,
+                                          player: player,
+                                        );
+                                        if (success) {
+                                          Navigator.pop(modalCtx);
+                                          if (!widget.asPage) {
+                                            Navigator.pop(context);
+                                          }
+                                          widget.onStoryOpened?.call();
+                                        }
+                                      },
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                  Divider(color: colors.border, height: 16),
-
-                  // Cách 1: Thêm truyện từ link web
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 14),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: colors.cardBackground,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: colors.border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: colors.primary.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(Icons.link_rounded, color: colors.primary, size: 18),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              '1. Thêm truyện bằng Link web',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: colors.textPrimary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Bạn chỉ cần copy link một chương bất kỳ từ các trang đọc truyện trực tuyến (như mtruyen.net, truyendichmienphi.com, webnovel.vn, truyenfull, xtruyen...) và dán vào ô "Thêm truyện bằng link...".',
-                          style: TextStyle(fontSize: 12.5, color: colors.textSecondary, height: 1.4),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Ví dụ mẫu (Chạm để dán thử ngay):',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colors.textPrimary),
-                        ),
-                        const SizedBox(height: 6),
-                        ...sampleUrls.map((url) => InkWell(
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                setState(() {
-                                  _searchController.text = url;
-                                  _query = url;
-                                });
-                              },
-                              borderRadius: BorderRadius.circular(6),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.arrow_right_rounded, color: colors.primary, size: 16),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: Text(
-                                        url,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontFamily: 'monospace',
-                                          color: colors.textSecondary,
-                                          decoration: TextDecoration.underline,
-                                          decorationColor: colors.border,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Icon(Icons.touch_app_rounded, color: colors.primary, size: 14),
-                                  ],
-                                ),
-                              ),
-                            )),
-                      ],
-                    ),
-                  ),
-
-                  // Cách 2: Thêm truyện từ file TXT / EPUB
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: colors.cardBackground,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: colors.border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: colors.primary.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(Icons.file_present_rounded, color: colors.primary, size: 18),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              '2. Thêm truyện từ File TXT / EPUB',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: colors.textPrimary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Bấm vào nút "Thêm truyện từ file txt và epub" ở trên và chọn tệp truyện có sẵn trên điện thoại của bạn.\n• Ứng dụng hỗ trợ cả định dạng .txt và .epub.\n• Toàn bộ chương truyện sẽ được tự động trích xuất, phân nhóm và lưu trữ để đọc & nghe audio ngoại tuyến (offline).',
-                          style: TextStyle(fontSize: 12.5, color: colors.textSecondary, height: 1.4),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
@@ -360,15 +534,13 @@ class _StorySearchModalState extends State<StorySearchModal> {
     final player = context.watch<PlayerStateProvider>();
     final colors = AppTheme.getColors(settings.appThemeMode, context);
 
-    final isUrlInput = _isUrl(_query);
-
     // Gom nhóm danh sách mục đã lưu theo tên truyện (kết hợp cả savedAudios và historyChapters)
     final Map<String, List<SavedAudioItem>> groupedMap = {};
     for (final item in appState.savedAudios) {
       final storyKey = item.storyTitle.trim().isNotEmpty
           ? item.storyTitle.trim()
           : 'Truyện chưa đặt tên';
-      
+
       // Tìm xem đã có nhóm nào trùng tên truyện qua isSameStory chưa
       String matchedKey = storyKey;
       for (final existingKey in groupedMap.keys) {
@@ -385,7 +557,7 @@ class _StorySearchModalState extends State<StorySearchModal> {
       final storyKey = chap.storyTitle.trim().isNotEmpty
           ? chap.storyTitle.trim()
           : 'Truyện chưa đặt tên';
-      
+
       String matchedKey = storyKey;
       for (final existingKey in groupedMap.keys) {
         if (AppStateProvider.isSameStory(existingKey, storyKey)) {
@@ -419,11 +591,11 @@ class _StorySearchModalState extends State<StorySearchModal> {
       groupedMap[key]!.sort((a, b) => a.chapterNumber.compareTo(b.chapterNumber));
     }
 
-    // Lọc theo từ khóa tìm kiếm
+    // Lọc theo từ khóa tìm kiếm tên truyện
     final filteredStories = <String, List<SavedAudioItem>>{};
     final queryTrimmed = _query.toLowerCase().trim();
 
-    if (queryTrimmed.isEmpty || isUrlInput) {
+    if (queryTrimmed.isEmpty) {
       filteredStories.addAll(groupedMap);
     } else {
       for (final entry in groupedMap.entries) {
@@ -463,7 +635,7 @@ class _StorySearchModalState extends State<StorySearchModal> {
           const SizedBox(height: 12),
         ],
 
-        // Header Kho Truyện
+        // Header Kho Truyện: Tiêu đề & Nút Thêm Truyện
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -483,247 +655,203 @@ class _StorySearchModalState extends State<StorySearchModal> {
             ),
             Row(
               children: [
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    foregroundColor: colors.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: colors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    elevation: 0,
                   ),
-                  icon: const Icon(Icons.help_outline_rounded, size: 17),
-                  label: const Text('Hướng dẫn', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  onPressed: () => _showHowToAddStoriesGuide(context, colors),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text(
+                    'Thêm Truyện',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                  ),
+                  onPressed: () => _showAddStoryModal(context, colors, appState, settings, player),
                 ),
-                if (!widget.asPage)
+                if (!widget.asPage) ...[
+                  const SizedBox(width: 6),
                   IconButton(
                     icon: Icon(Icons.close_rounded, color: colors.textMuted, size: 20),
                     onPressed: () => Navigator.pop(context),
                   ),
+                ],
               ],
             ),
           ],
         ),
         Divider(color: colors.border, height: 16),
 
-        // Nút Thêm Truyện Từ File TXT / EPUB
-        Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          width: double.infinity,
-          height: 42,
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: colors.primary,
-              side: BorderSide(color: colors.primary.withValues(alpha: 0.6), width: 1.2),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              backgroundColor: colors.primary.withValues(alpha: 0.06),
-            ),
-            icon: appState.isImportingFile
-                ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+        // Thanh Tìm kiếm theo tên truyện + Nút Tìm kiếm
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 42,
+                decoration: BoxDecoration(
+                  color: colors.cardBackground,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: colors.border),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _focusNode,
+                  style: TextStyle(fontSize: 13.5, color: colors.textPrimary),
+                  decoration: InputDecoration(
+                    hintText: 'Tìm kiếm theo tên truyện...',
+                    hintStyle: TextStyle(color: colors.textMuted, fontSize: 12.5),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      size: 20,
+                      color: colors.textMuted,
                     ),
-                  )
-                : const Icon(Icons.upload_file_rounded, size: 20),
-            label: Text(
-              appState.isImportingFile
-                  ? 'Đang thêm truyện từ file...'
-                  : 'Thêm truyện từ file txt và epub',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-            ),
-            onPressed: appState.isImportingFile
-                ? null
-                : () async {
-                    final success = await appState.importStoryFromFile(
-                      settings: settings,
-                      player: player,
-                    );
-                    if (success) {
-                      if (!widget.asPage) {
-                        Navigator.pop(context);
-                      }
-                      widget.onStoryOpened?.call();
-                    }
+                    suffixIcon: _query.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.clear_rounded, size: 18, color: colors.textMuted),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
+                          )
+                        : null,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                  ),
+                  onChanged: (val) {
+                    setState(() => _query = val);
                   },
-          ),
-        ),
-
-        // Ô nhập tìm kiếm / Dán Link
-        Container(
-          decoration: BoxDecoration(
-            color: colors.cardBackground,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isUrlInput ? colors.primary : colors.border,
-              width: isUrlInput ? 1.5 : 1.0,
-            ),
-          ),
-          child: TextField(
-            controller: _searchController,
-            focusNode: _focusNode,
-            style: TextStyle(fontSize: 13.5, color: colors.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'Thêm truyện bằng link...',
-              hintStyle: TextStyle(color: colors.textMuted, fontSize: 12.5),
-              prefixIcon: Icon(
-                isUrlInput ? Icons.link_rounded : Icons.search_rounded,
-                size: 20,
-                color: isUrlInput ? colors.primary : colors.textMuted,
+                  onSubmitted: (_) {
+                    FocusScope.of(context).unfocus();
+                  },
+                ),
               ),
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_query.isNotEmpty)
-                    IconButton(
-                      icon: Icon(Icons.clear_rounded, size: 18, color: colors.textMuted),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _query = '');
-                      },
-                    )
-                  else
-                    TextButton.icon(
-                      icon: Icon(Icons.paste_rounded, size: 16, color: colors.primary),
-                      label: Text(
-                        'Dán',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colors.primary),
-                      ),
-                      onPressed: _pasteFromClipboard,
-                    ),
-                ],
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
             ),
-            onChanged: (val) {
-              setState(() => _query = val);
-            },
-            onSubmitted: (val) async {
-              if (val.trim().isNotEmpty) {
-                if (_isUrl(val)) {
-                  if (!widget.asPage) Navigator.pop(context);
-                  await appState.loadFromUrl(val.trim(), settings: settings, player: player);
-                  widget.onStoryOpened?.call();
-                }
-              }
-            },
-          ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 42,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colors.primary.withValues(alpha: 0.12),
+                  foregroundColor: colors.primary,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: colors.primary.withValues(alpha: 0.3)),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                ),
+                icon: const Icon(Icons.search_rounded, size: 18),
+                label: const Text(
+                  'Tìm',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                },
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
 
-        // Nếu là URL -> Hiển thị Card Tải Link Trực Tiếp
-        if (isUrlInput) ...[
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: colors.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: colors.primary.withValues(alpha: 0.4), width: 1.2),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.public_rounded, color: colors.primary, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Phát hiện liên kết truyện hợp lệ',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.bold,
-                        color: colors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _query.trim(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colors.textSecondary,
-                    fontFamily: 'monospace',
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 40,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: colors.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    icon: const Icon(Icons.download_rounded, size: 18),
-                    label: const Text(
-                      'Tải & Đọc truyện từ liên kết này',
-                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-                    ),
-                    onPressed: () async {
-                      if (!widget.asPage) Navigator.pop(context);
-                      await appState.loadFromUrl(_query.trim(), settings: settings, player: player);
-                      widget.onStoryOpened?.call();
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-
         // Tiêu đề danh sách khi có tìm kiếm
         if (_query.isNotEmpty) ...[
-          Text(
-            isUrlInput
-                ? 'Hoặc chọn từ kho truyện:'
-                : 'Kết quả tìm kiếm ($totalStories truyện):',
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.bold,
-              color: colors.textMuted,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Kết quả tìm kiếm ($totalStories truyện):',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.bold,
+                  color: colors.textMuted,
+                ),
+              ),
+              InkWell(
+                onTap: () {
+                  _searchController.clear();
+                  setState(() => _query = '');
+                },
+                child: Text(
+                  'Xóa bộ lọc',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                    color: colors.primary,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
         ],
 
-        // Danh sách truyện trong Kho truyện (chỉ chọn truyện, không chọn chương)
+        // Danh sách truyện trong Kho truyện
         Expanded(
           child: filteredStories.isEmpty
-              ? SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_query.isNotEmpty) ...[
-                        Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 20),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.search_off_rounded,
-                                  size: 40,
-                                  color: colors.textMuted.withValues(alpha: 0.4),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Không tìm thấy truyện phù hợp trong kho truyện.',
-                                  style: TextStyle(fontSize: 13, color: colors.textMuted),
-                                ),
-                              ],
-                            ),
+              ? Center(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _query.isNotEmpty ? Icons.search_off_rounded : Icons.menu_book_outlined,
+                          size: 54,
+                          color: colors.textMuted.withValues(alpha: 0.35),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _query.isNotEmpty
+                              ? 'Không tìm thấy truyện phù hợp'
+                              : 'Kho truyện đang trống',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: colors.textPrimary,
                           ),
                         ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _query.isNotEmpty
+                              ? 'Không tìm thấy truyện nào khớp với từ khóa "$_query".'
+                              : 'Bạn chưa lưu truyện nào trong kho. Hãy bấm nút "Thêm Truyện" để thêm truyện từ file hoặc link web.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: colors.textMuted,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: colors.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                            elevation: 0,
+                          ),
+                          icon: Icon(_query.isNotEmpty ? Icons.clear_rounded : Icons.add_rounded, size: 18),
+                          label: Text(
+                            _query.isNotEmpty ? 'Xóa từ khóa tìm kiếm' : 'Thêm Truyện Ngay',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                          onPressed: () {
+                            if (_query.isNotEmpty) {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            } else {
+                              _showAddStoryModal(context, colors, appState, settings, player);
+                            }
+                          },
+                        ),
                       ],
-                      _buildLinkGuideCard(colors),
-                    ],
+                    ),
                   ),
                 )
               : ListView.separated(
@@ -915,110 +1043,6 @@ class _StorySearchModalState extends State<StorySearchModal> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildLinkGuideCard(AppThemeColors colors) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colors.cardBackground,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.info_outline_rounded, color: colors.primary, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                'Hướng dẫn dán link truyện hợp lệ',
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.bold,
-                  color: colors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Để tải và đọc truyện từ mạng, bạn có thể dán đường dẫn (URL) dẫn trực tiếp đến một chương cụ thể của truyện.',
-            style: TextStyle(fontSize: 12.5, color: colors.textSecondary, height: 1.4),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Cấu trúc link hợp lệ:',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colors.textPrimary),
-          ),
-          const SizedBox(height: 4),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: colors.elevatedBackground,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: colors.border.withValues(alpha: 0.6)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '• https://<tên-web>/<tên-truyện>/chuong-<số-chương>/',
-                  style: TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: colors.primary),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '• https://<tên-web>/truyen/<tên-truyện>/chuong/<số-chương>',
-                  style: TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: colors.primary),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Ví dụ link hợp lệ (Chạm để dán thử ngay):',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colors.textPrimary),
-          ),
-          const SizedBox(height: 6),
-          ...sampleUrls.map((url) => InkWell(
-                onTap: () {
-                  setState(() {
-                    _searchController.text = url;
-                    _query = url;
-                  });
-                },
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Icon(Icons.arrow_right_rounded, color: colors.primary, size: 16),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          url,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontFamily: 'monospace',
-                            color: colors.textSecondary,
-                            decoration: TextDecoration.underline,
-                            decorationColor: colors.border,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(Icons.touch_app_rounded, color: colors.primary, size: 14),
-                    ],
-                  ),
-                ),
-              )),
-        ],
       ),
     );
   }
