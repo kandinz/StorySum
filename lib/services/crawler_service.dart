@@ -292,6 +292,79 @@ class CrawlerService {
     return crawlChapterFromUrl(targetUrl.isNotEmpty ? targetUrl : baseUrl, chapterNumber: chapterNumber);
   }
 
+  /// Kiểm tra xem trang vừa tải có phải là trang thông tin/mục lục truyện thay vì trang đọc chương hay không
+  /// Nếu đúng, tìm kiếm đường link đọc chương thực sự từ danh sách chương trên trang
+  String? _findActualChapterUrlFromDoc(dom.Document doc, String currentUrl, int targetChapterNumber) {
+    // 1. Kiểm tra nếu trang đã có container đọc chương rõ ràng với độ dài văn bản đủ lớn
+    final readingSelectors = [
+      '#chapter-c',
+      '.chapter-c',
+      '#chapter-reading-content',
+      '#reading-content',
+      '.reading-content',
+      '#chap-content',
+      '#chapter-content',
+      '#vungdoc',
+      '.box-chap',
+    ];
+    for (final sel in readingSelectors) {
+      final el = doc.querySelector(sel);
+      if (el != null && el.text.trim().length > 150) {
+        return null; // Đã là trang đọc chương hợp lệ
+      }
+    }
+
+    // 2. Quét toàn bộ thẻ <a> trên trang để tìm link khớp với số chương yêu cầu
+    final allLinks = doc.querySelectorAll(
+      '#list-chapter a, .list-chapter a, ul.list-chapter a, .l-chapters a, .list-chapters a, a[href*="chuong"], a[href*="quyen"], a[href*="chap"]',
+    );
+
+    // Ưu tiên 1: Tìm link có href hoặc text khớp chính xác số chương
+    for (final a in allLinks) {
+      final href = a.attributes['href']?.trim() ?? '';
+      if (href.isEmpty || href == '#' || href.startsWith('javascript:')) continue;
+
+      final text = a.text.trim().toLowerCase();
+      final title = (a.attributes['title'] ?? '').toLowerCase();
+      final hrefLower = href.toLowerCase();
+
+      // Kiểm tra pattern chuong-X hoặc quyen-Y-chuong-X
+      final matchInHref = RegExp('(?:quyen-\\d+-)?chuong-$targetChapterNumber(?:/|\\.html|\$)', caseSensitive: false).hasMatch(hrefLower);
+      final matchInText = RegExp('chương\\s*$targetChapterNumber\\b', caseSensitive: false).hasMatch(text) ||
+          RegExp('chap\\s*$targetChapterNumber\\b', caseSensitive: false).hasMatch(text);
+      final matchInTitle = RegExp('chương\\s*$targetChapterNumber\\b', caseSensitive: false).hasMatch(title);
+
+      if (matchInHref || matchInText || matchInTitle) {
+        try {
+          final resolved = Uri.parse(currentUrl).resolve(href).toString();
+          if (resolved != currentUrl) {
+            return resolved;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // Ưu tiên 2: Nếu targetChapterNumber == 1 và chưa tìm thấy, lấy link chương đầu tiên trong danh sách chương
+    if (targetChapterNumber == 1) {
+      final firstChapterLinks = doc.querySelectorAll(
+        '#list-chapter a[href*="chuong"], .list-chapter a[href*="chuong"], ul.list-chapter a, .l-chapters a',
+      );
+      for (final a in firstChapterLinks) {
+        final href = a.attributes['href']?.trim() ?? '';
+        if (href.isNotEmpty && !href.contains('trang-') && !href.startsWith('javascript:')) {
+          try {
+            final resolved = Uri.parse(currentUrl).resolve(href).toString();
+            if (resolved != currentUrl) {
+              return resolved;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    return null;
+  }
+
   /// Crawl một chương truyện trực tiếp từ URL đầy đủ
   Future<ChapterModel> crawlChapterFromUrl(String targetUrl, {int? chapterNumber}) async {
     final normalizedUrl = normalizeUrl(targetUrl);
@@ -304,16 +377,31 @@ class CrawlerService {
 
     // 2. Crawl tiêu chuẩn cho tất cả các trang web khác
     try {
-      final htmlContent = await fetchUrlContent(normalizedUrl);
+      String htmlContent = await fetchUrlContent(normalizedUrl);
       if (htmlContent.trim().isEmpty) {
         throw Exception('Không nhận được dữ liệu phản hồi từ trang web.');
       }
 
-      final document = html_parser.parse(htmlContent);
-      final currentChapNum = chapterNumber ?? _detectChapterNumber(normalizedUrl, document);
+      var document = html_parser.parse(htmlContent);
+      int currentChapNum = chapterNumber ?? _detectChapterNumber(normalizedUrl, document);
+      String actualUrl = normalizedUrl;
+
+      // Tự động nhận diện nếu URL trả về trang thông tin/mục lục truyện thay vì chương đọc
+      final redirectChapterUrl = _findActualChapterUrlFromDoc(document, normalizedUrl, currentChapNum);
+      if (redirectChapterUrl != null && redirectChapterUrl != normalizedUrl) {
+        try {
+          final redirectHtml = await fetchUrlContent(redirectChapterUrl);
+          if (redirectHtml.trim().isNotEmpty) {
+            htmlContent = redirectHtml;
+            document = html_parser.parse(redirectHtml);
+            actualUrl = redirectChapterUrl;
+            currentChapNum = chapterNumber ?? _detectChapterNumber(redirectChapterUrl, document);
+          }
+        } catch (_) {}
+      }
 
       // Trích xuất Tên truyện & Tên chương
-      String storyTitle = _extractStoryTitle(document, normalizedUrl);
+      String storyTitle = _extractStoryTitle(document, actualUrl);
       String chapterTitle = _extractChapterTitle(document, currentChapNum);
 
       // Trích xuất nội dung truyện thuần túy
@@ -332,11 +420,11 @@ class CrawlerService {
       int wordCount = content.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
 
       return ChapterModel(
-        id: '${Uri.parse(normalizedUrl).host}_$currentChapNum',
+        id: '${Uri.parse(actualUrl).host}_$currentChapNum',
         storyTitle: storyTitle,
         chapterTitle: chapterTitle,
         chapterNumber: currentChapNum,
-        sourceUrl: normalizedUrl,
+        sourceUrl: actualUrl,
         content: content,
         wordCount: wordCount,
       );
@@ -718,7 +806,26 @@ class CrawlerService {
       '#voteBox',
       '#donateBox',
       '#readerDrawer',
-      // Ads & Social
+      // Ads & Popups & Unlocks & Hidden SEO
+      '#ads_click_view_chapter',
+      '#ads-unlock-reminder',
+      '.ads-unlock-container',
+      '.ads-unlock-reminder',
+      '.ads-unlock-text',
+      '.ads-reminder-text',
+      '#ads-chapter-top',
+      '#ads-chapter-bottom',
+      '.ads-chapter-bottom-lien-quan',
+      '.ads-lien-quan',
+      '.ads-taboola-truyen',
+      '#ads-detail-truyen-main-middle',
+      '#ads-detail-truyen-main-middle-new',
+      '.text-link-bottom',
+      'a.text_link_an',
+      '#ads-head',
+      '#ads-install-app',
+      '#ads-xuyentrang-bottom',
+      '#catfish-bottom-sp',
       '.ads',
       '.ads-holder',
       '.adv',
@@ -756,6 +863,27 @@ class CrawlerService {
 
     for (var sel in removeSelectors) {
       contentContainer.querySelectorAll(sel).forEach((e) => e.remove());
+    }
+
+    // Xóa tất cả các phần tử có style ẩn (display:none, visibility:hidden, height:0, color:transparent...)
+    final allChildren = contentContainer.querySelectorAll('*');
+    for (var child in allChildren) {
+      final style = child.attributes['style']?.toLowerCase() ?? '';
+      if (style.contains('display:none') ||
+          style.contains('display: none') ||
+          style.contains('visibility:hidden') ||
+          style.contains('visibility: hidden') ||
+          style.contains('height:0') ||
+          style.contains('height: 0') ||
+          style.contains('font-size:0') ||
+          style.contains('font-size: 0') ||
+          style.contains('font-size: 1px') ||
+          style.contains('font-size: 2px') ||
+          style.contains('font-size: 5px') ||
+          style.contains('color: transparent') ||
+          style.contains('color:transparent')) {
+        child.remove();
+      }
     }
 
     // Thay thế các thẻ ngắt dòng <br>, <p>, <div> thành ký tự xuống dòng
@@ -796,6 +924,7 @@ class CrawlerService {
         'script', 'style', 'iframe', 'noscript',
         'header', 'footer', 'nav', 'aside',
         '.ads', '.adv', '.native-stories', '.reading-control',
+        '#ads_click_view_chapter', '#ads-unlock-reminder',
         'button', 'a.btn', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
       ];
       for (var sel in removeSelectors) {
@@ -853,7 +982,13 @@ class CrawlerService {
       'momo:',
       'stk:',
       'donate',
+      'truyen full',
       'truyenfull',
+      'truyenfullvn',
+      'truyenfulllive',
+      'truyenfull.vn',
+      'truyenfull.live',
+      'truyenfull.io',
       'xtruyen',
       'tangthuvien',
       'bachngocsach',
@@ -871,6 +1006,19 @@ class CrawlerService {
       'discord.gg',
       'hãy ủng hộ',
       'mở app',
+      'click ads',
+      'mở khóa toàn bộ',
+      'nội dung chương đang bị khóa',
+      'mở lại quảng cáo',
+      'để tiếp tục ủng hộ dịch giả',
+      'báo lỗi chương',
+      'bình luận chương',
+      'bình luận truyện',
+      'phím mũi tên hoặc wasd',
+      'dịch giả:',
+      'người dịch:',
+      'converter:',
+      'diệp công thích rồng',
       // Reader UI terms
       'màu nền',
       'xám nhạt',
@@ -893,7 +1041,6 @@ class CrawlerService {
       'list truyện tiên hiệp',
       'tuyển tập truyện ngôn tình',
       'top truyện xuyên không',
-      'báo lỗi chương',
     ];
 
     for (var rawLine in lines) {

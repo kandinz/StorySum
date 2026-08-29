@@ -225,26 +225,33 @@ class _StorySearchModalState extends State<StorySearchModal> {
                             const SizedBox(height: 12),
                             // Ô nhập dán link
                             Container(
+                              height: 46,
                               decoration: BoxDecoration(
                                 color: colors.cardBackground,
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: urlErrorText != null ? Colors.redAccent : colors.border,
                                 ),
                               ),
                               child: TextField(
                                 controller: urlInputController,
+                                textAlignVertical: TextAlignVertical.center,
                                 style: TextStyle(fontSize: 13, color: colors.textPrimary),
                                 decoration: InputDecoration(
+                                  isDense: true,
                                   hintText: 'Dán link chương truyện tại đây...',
-                                  hintStyle: TextStyle(color: colors.textMuted, fontSize: 12),
-                                  prefixIcon: Icon(Icons.link_rounded, size: 18, color: colors.primary),
+                                  hintStyle: TextStyle(color: colors.textMuted, fontSize: 12.5),
+                                  prefixIcon: Icon(Icons.link_rounded, size: 20, color: colors.primary),
+                                  prefixIconConstraints: const BoxConstraints(minWidth: 42, minHeight: 46),
                                   suffixIcon: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       if (urlInputController.text.isNotEmpty)
                                         IconButton(
-                                          icon: Icon(Icons.clear_rounded, size: 16, color: colors.textMuted),
+                                          icon: Icon(Icons.clear_rounded, size: 18, color: colors.textMuted),
+                                          splashRadius: 18,
+                                          constraints: const BoxConstraints(minWidth: 38, minHeight: 46),
+                                          padding: EdgeInsets.zero,
                                           onPressed: () {
                                             setModalState(() {
                                               urlInputController.clear();
@@ -253,18 +260,30 @@ class _StorySearchModalState extends State<StorySearchModal> {
                                           },
                                         )
                                       else
-                                        TextButton.icon(
-                                          icon: Icon(Icons.paste_rounded, size: 14, color: colors.primary),
-                                          label: Text(
-                                            'Dán',
-                                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.primary),
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 6),
+                                          child: TextButton.icon(
+                                            style: TextButton.styleFrom(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              minimumSize: Size.zero,
+                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              backgroundColor: colors.primary.withValues(alpha: 0.12),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                            ),
+                                            icon: Icon(Icons.paste_rounded, size: 14, color: colors.primary),
+                                            label: Text(
+                                              'Dán',
+                                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.primary),
+                                            ),
+                                            onPressed: pasteFromClipboard,
                                           ),
-                                          onPressed: pasteFromClipboard,
                                         ),
                                     ],
                                   ),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                                   border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
                                 ),
                                 onChanged: (val) {
                                   if (urlErrorText != null) {
@@ -287,12 +306,12 @@ class _StorySearchModalState extends State<StorySearchModal> {
                             // Nút Tải truyện từ Link
                             SizedBox(
                               width: double.infinity,
-                              height: 40,
+                              height: 44,
                               child: ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: colors.primary,
                                   foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                   elevation: 0,
                                 ),
                                 icon: const Icon(Icons.download_rounded, size: 18),
@@ -387,12 +406,12 @@ class _StorySearchModalState extends State<StorySearchModal> {
                             const SizedBox(height: 12),
                             SizedBox(
                               width: double.infinity,
-                              height: 42,
+                              height: 44,
                               child: OutlinedButton.icon(
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: colors.primary,
                                   side: BorderSide(color: colors.primary.withValues(alpha: 0.6), width: 1.2),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                   backgroundColor: colors.primary.withValues(alpha: 0.06),
                                 ),
                                 icon: isImporting
@@ -599,18 +618,8 @@ class _StorySearchModalState extends State<StorySearchModal> {
       filteredStories.addAll(groupedMap);
     } else {
       for (final entry in groupedMap.entries) {
-        final storyMatches = entry.key.toLowerCase().contains(queryTrimmed);
-        if (storyMatches) {
+        if (entry.key.toLowerCase().contains(queryTrimmed)) {
           filteredStories[entry.key] = entry.value;
-        } else {
-          final matchingChapters = entry.value.where((c) {
-            return c.displayChapterTitle.toLowerCase().contains(queryTrimmed) ||
-                c.title.toLowerCase().contains(queryTrimmed) ||
-                c.chapterNumber.toString().contains(queryTrimmed);
-          }).toList();
-          if (matchingChapters.isNotEmpty) {
-            filteredStories[entry.key] = entry.value;
-          }
         }
       }
     }
@@ -698,7 +707,7 @@ class _StorySearchModalState extends State<StorySearchModal> {
             style: TextStyle(fontSize: 13.5, color: colors.textPrimary),
             decoration: InputDecoration(
               isDense: true,
-              hintText: 'Tìm kiếm theo tên truyện, chương...',
+              hintText: 'Tìm kiếm theo tên truyện...',
               hintStyle: TextStyle(color: colors.textMuted, fontSize: 13),
               prefixIcon: Icon(
                 Icons.search_rounded,
@@ -735,34 +744,17 @@ class _StorySearchModalState extends State<StorySearchModal> {
 
         // Tiêu đề danh sách khi có tìm kiếm
         if (_query.isNotEmpty) ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Kết quả tìm kiếm ($totalStories truyện):',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.bold,
-                  color: colors.textMuted,
-                ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Kết quả tìm kiếm ($totalStories truyện):',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.bold,
+                color: colors.textMuted,
               ),
-              InkWell(
-                onTap: () {
-                  _searchController.clear();
-                  setState(() => _query = '');
-                },
-                child: Text(
-                  'Xóa bộ lọc',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.bold,
-                    color: colors.primary,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 8),
         ],
 
         // Danh sách truyện trong Kho truyện

@@ -11,7 +11,8 @@ enum AudioSourceType {
 }
 
 class PlayerStateProvider extends ChangeNotifier {
-  final AudioPlayerService playerService;
+  AudioPlayerService? _playerService;
+  AudioPlayerService get playerService => _playerService!;
 
   bool _isPlaying = false;
   bool _isPausedByUser = false;
@@ -40,8 +41,16 @@ class PlayerStateProvider extends ChangeNotifier {
 
   final StreamController<void> _playbackCompleteController = StreamController<void>.broadcast();
 
-  PlayerStateProvider({required this.playerService}) {
+  PlayerStateProvider({AudioPlayerService? playerService}) : _playerService = playerService {
+    if (_playerService != null) {
+      _initListeners();
+    }
+  }
+
+  void updatePlayerService(AudioPlayerService service) {
+    _playerService = service;
     _initListeners();
+    notifyListeners();
   }
 
   bool get isPlaying => _isPlaying;
@@ -191,9 +200,9 @@ class PlayerStateProvider extends ChangeNotifier {
   // ==========================================
   // BACKGROUND MUSIC (BGM) LOGIC
   // ==========================================
-  bool get bgmEnabled => playerService.bgmEnabled;
-  double get bgmVolume => playerService.bgmVolume;
-  bool get isPreviewingBgm => playerService.isPreviewingBgm;
+  bool get bgmEnabled => _playerService?.bgmEnabled ?? false;
+  double get bgmVolume => _playerService?.bgmVolume ?? 0.3;
+  bool get isPreviewingBgm => _playerService?.isPreviewingBgm ?? false;
 
   Future<void> setBgmEnabled(bool enabled) async {
     await playerService.setBgmEnabled(enabled);

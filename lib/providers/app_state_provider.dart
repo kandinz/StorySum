@@ -1321,16 +1321,15 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
-  /// Tổng hợp TTS cho một câu đơn lẻ
   /// Xử lý đồng bộ lại trạng thái âm thanh và tự động tạo audio khi người dùng đổi giọng đọc
   Future<void> onVoiceChanged({
     required SettingsProvider settings,
     PlayerStateProvider? player,
   }) async {
-    // 1. Tạm dừng phát nếu đang phát
+    // 1. Ghi nhận trạng thái phát trước đó và tạm dừng phát
+    final wasPlaying = player != null && player.isPlaying;
     if (player != null && player.isPlaying) {
-      await player.stop();
-      player.resetManualPause();
+      await player.stop(resetPause: false);
     }
 
     // 2. Hủy tiến trình tạo audio của giọng cũ
@@ -1341,14 +1340,18 @@ class AppStateProvider extends ChangeNotifier {
       return;
     }
 
-    // 3. Quét lại audio của giọng mới cho tóm tắt & nội dung
+    // 3. Quét lại audio của giọng mới cho tóm tắt & nội dung từ cache trên đĩa
+    final voice = settings.currentVoice;
+    final voiceId = settings.selectedVoiceId;
+
     if (_summarySentences.isNotEmpty) {
       _summarySentences = await _attachExistingAudioFiles(
         sentences: _summarySentences.map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false)).toList(),
         storyTitle: _currentChapter!.storyTitle,
         chapterNumber: _currentChapter!.chapterNumber,
         type: 'summary',
-        voiceId: settings.selectedVoiceId,
+        voiceId: voiceId,
+        voice: voice,
       );
     }
 
@@ -1358,20 +1361,58 @@ class AppStateProvider extends ChangeNotifier {
         storyTitle: _currentChapter!.storyTitle,
         chapterNumber: _currentChapter!.chapterNumber,
         type: 'content',
-        voiceId: settings.selectedVoiceId,
+        voiceId: voiceId,
+        voice: voice,
+      );
+    }
+
+    // 4. Làm mới dữ liệu cache của chương tải trước (preloadedNextChapter) theo giọng mới
+    if (_preloadedNextChapter != null) {
+      final preloadedChap = _preloadedNextChapter!.chapter;
+      final newSummary = await _attachExistingAudioFiles(
+        sentences: _preloadedNextChapter!.summarySentences.map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false)).toList(),
+        storyTitle: preloadedChap.storyTitle,
+        chapterNumber: preloadedChap.chapterNumber,
+        type: 'summary',
+        voiceId: voiceId,
+        voice: voice,
+      );
+      final newContent = await _attachExistingAudioFiles(
+        sentences: _preloadedNextChapter!.contentSentences.map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false)).toList(),
+        storyTitle: preloadedChap.storyTitle,
+        chapterNumber: preloadedChap.chapterNumber,
+        type: 'content',
+        voiceId: voiceId,
+        voice: voice,
+      );
+      _preloadedNextChapter = PreloadedChapter(
+        chapter: preloadedChap,
+        summarySentences: newSummary,
+        contentSentences: newContent,
+        summary: _preloadedNextChapter!.summary,
       );
     }
 
     notifyListeners();
 
-    // 4. Nếu đang phát và không pause, khởi chạy tiến trình sinh audio cho tab đang chọn
-    if (player != null && player.isPlaying && !player.isPausedByUser) {
-      _startSequentialGeneration(
-        chapter: _currentChapter!,
-        settings: settings,
-        player: player,
-        startIndex: 0,
-      );
+    // 5. Nếu đang phát trước đó -> phát tiếp câu hiện tại và kích hoạt tạo audio theo giọng mới
+    final startIdx = _activeSentenceIndex ?? 0;
+    if (wasPlaying && !player.isPausedByUser) {
+      final targetList = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
+      if (targetList.isNotEmpty) {
+        await playSentence(
+          sourceType: _activeAudioSource,
+          sentenceIndex: startIdx,
+          settings: settings,
+          player: player,
+        );
+        _startSequentialGeneration(
+          chapter: _currentChapter!,
+          settings: settings,
+          player: player,
+          startIndex: startIdx,
+        );
+      }
     }
   }
 

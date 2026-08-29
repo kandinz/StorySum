@@ -81,7 +81,7 @@ def get_pubspec_version(cwd):
     return "1.0.0", "1.0.0+1"
 
 
-def step1_build_apk(cwd):
+def step1_build_apk(cwd, tag):
     print("\n==========================================")
     print("STEP 1: Building Release APK (ARM64 only)")
     print("==========================================")
@@ -93,14 +93,40 @@ def step1_build_apk(cwd):
     build_arm64_cmd = "flutter build apk --release --target-platform android-arm64 --split-per-abi"
     run_cmd(build_arm64_cmd, cwd=cwd)
     
-    arm64_apk = os.path.join(cwd, "build", "app", "outputs", "flutter-apk", "app-arm64-v8a-release.apk")
-    if os.path.exists(arm64_apk):
-        size_mb = os.path.getsize(arm64_apk) / (1024 * 1024)
-        print(f"[SUCCESS] ARM64 APK: {arm64_apk} ({size_mb:.2f} MB)")
-        built_apks.append(arm64_apk)
+    apk_dir = os.path.join(cwd, "build", "app", "outputs", "flutter-apk")
+    raw_arm64_apk = os.path.join(apk_dir, "app-arm64-v8a-release.apk")
+    
+    version_tag = tag if tag.startswith("v") else f"v{tag}"
+    target_name = f"app-arm64-v8a-release-{version_tag}.apk"
+    target_apk = os.path.join(apk_dir, target_name)
+    
+    if os.path.exists(raw_arm64_apk):
+        if os.path.exists(target_apk) and os.path.abspath(target_apk) != os.path.abspath(raw_arm64_apk):
+            os.remove(target_apk)
+        os.rename(raw_arm64_apk, target_apk)
+        
+        raw_sha1 = raw_arm64_apk + ".sha1"
+        target_sha1 = target_apk + ".sha1"
+        if os.path.exists(raw_sha1):
+            if os.path.exists(target_sha1):
+                os.remove(target_sha1)
+            os.rename(raw_sha1, target_sha1)
+            
+        size_mb = os.path.getsize(target_apk) / (1024 * 1024)
+        print(f"[SUCCESS] ARM64 APK (renamed with version): {target_apk} ({size_mb:.2f} MB)")
+        built_apks.append(target_apk)
+    elif os.path.exists(target_apk):
+        size_mb = os.path.getsize(target_apk) / (1024 * 1024)
+        print(f"[SUCCESS] ARM64 APK already exists with version: {target_apk} ({size_mb:.2f} MB)")
+        built_apks.append(target_apk)
 
     if not built_apks:
-        raise FileNotFoundError("Cannot find built ARM64 APK in build/app/outputs/flutter-apk")
+        for f in os.listdir(apk_dir) if os.path.exists(apk_dir) else []:
+            if f.endswith(".apk") and (version_tag in f or "arm64" in f or "release" in f):
+                built_apks.append(os.path.join(apk_dir, f))
+
+    if not built_apks:
+        raise FileNotFoundError(f"Cannot find built ARM64 APK in {apk_dir}")
         
     return built_apks
 
@@ -268,21 +294,37 @@ def main():
     
     apk_paths = []
     if not args.skip_build:
-        apk_paths = step1_build_apk(cwd)
+        apk_paths = step1_build_apk(cwd, tag)
     else:
         apk_dir = os.path.join(cwd, "build", "app", "outputs", "flutter-apk")
-        for f in os.listdir(apk_dir) if os.path.exists(apk_dir) else []:
-            if f.endswith("-release.apk") or f == "app-release.apk":
-                apk_paths.append(os.path.join(apk_dir, f))
+        version_tag = tag if tag.startswith("v") else f"v{tag}"
+        target_name = f"app-arm64-v8a-release-{version_tag}.apk"
+        target_apk = os.path.join(apk_dir, target_name)
+        raw_arm64_apk = os.path.join(apk_dir, "app-arm64-v8a-release.apk")
+        
+        if os.path.exists(target_apk):
+            apk_paths.append(target_apk)
+        elif os.path.exists(raw_arm64_apk):
+            print(f"[INFO] Renaming existing {raw_arm64_apk} to {target_apk}...")
+            os.rename(raw_arm64_apk, target_apk)
+            raw_sha1 = raw_arm64_apk + ".sha1"
+            if os.path.exists(raw_sha1):
+                os.rename(raw_sha1, target_apk + ".sha1")
+            apk_paths.append(target_apk)
+        else:
+            for f in os.listdir(apk_dir) if os.path.exists(apk_dir) else []:
+                if f.endswith(".apk") and (version_tag in f or "arm64" in f or "release" in f):
+                    apk_paths.append(os.path.join(apk_dir, f))
         print(f"[INFO] Skipping build. Found existing APKs: {apk_paths}")
         
     if not args.skip_release:
+        apk_name = os.path.basename(apk_paths[0]) if apk_paths else f"app-arm64-v8a-release-{tag}.apk"
         step2_push_github_release(
             cwd=cwd,
             apk_paths=apk_paths,
             tag=tag,
             title=args.title or f"Release {tag}",
-            notes=args.notes or f"Release {tag} - Universal APK (cho mọi loại máy) & ARM64 APK",
+            notes=args.notes or f"Release {tag} - ARM64-v8a Release APK ({apk_name})",
             token=token,
             owner=owner,
             repo=repo

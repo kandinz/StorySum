@@ -1,7 +1,7 @@
 name: app_story
 description: "StorySum - Story Crawler, AI Summary & TTS Audio Application for Android (Ktool Inspired)"
 publish_to: 'none'
-version: 1.0.53+54
+version: 1.0.54+55
 
 
 
