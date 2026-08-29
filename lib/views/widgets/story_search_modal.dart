@@ -8,7 +8,11 @@ import '../../models/saved_audio_item.dart';
 import '../../core/theme/app_theme.dart';
 
 class StorySearchModal extends StatefulWidget {
-  const StorySearchModal({Key? key}) : super(key: key);
+  final bool asPage;
+
+  const StorySearchModal({Key? key, this.asPage = false}) : super(key: key);
+
+  const StorySearchModal.page({Key? key}) : asPage = true, super(key: key);
 
   static void show(BuildContext context) {
     showModalBottomSheet(
@@ -223,6 +227,308 @@ class _StorySearchModalState extends State<StorySearchModal> {
     final totalStories = filteredStories.length;
     final totalChapters = filteredStories.values.fold<int>(0, (sum, list) => sum + list.length);
 
+    final column = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Thanh kéo modal (chỉ hiển thị khi không ở chế độ page)
+        if (!widget.asPage) ...[
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colors.textMuted.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Header Search Modal
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.search_rounded, color: colors.primary, size: 22),
+                const SizedBox(width: 8),
+                Text(
+                  'Tìm Kiếm',
+                  style: TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.bold,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                if (totalStories > 0) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$totalStories truyện • $totalChapters chương',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: colors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            Row(
+              children: [
+                if (appState.savedAudios.isNotEmpty)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                    ),
+                    icon: const Icon(Icons.delete_sweep_rounded, size: 17),
+                    label: const Text('Xóa hết', style: TextStyle(fontSize: 11.5)),
+                    onPressed: () => _confirmClearAll(context, appState, colors),
+                  ),
+                if (!widget.asPage)
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, color: colors.textMuted, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        Divider(color: colors.border, height: 16),
+
+        // Ô nhập tìm kiếm / Dán Link
+        Container(
+          decoration: BoxDecoration(
+            color: colors.cardBackground,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isUrlInput ? colors.primary : colors.border,
+              width: isUrlInput ? 1.5 : 1.0,
+            ),
+          ),
+          child: TextField(
+            controller: _searchController,
+            focusNode: _focusNode,
+            style: TextStyle(fontSize: 13.5, color: colors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Dán URL chương truyện (VD: https://.../chuong-1)...',
+              hintStyle: TextStyle(color: colors.textMuted, fontSize: 12.5),
+              prefixIcon: Icon(
+                isUrlInput ? Icons.link_rounded : Icons.search_rounded,
+                size: 20,
+                color: isUrlInput ? colors.primary : colors.textMuted,
+              ),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_query.isNotEmpty)
+                    IconButton(
+                      icon: Icon(Icons.clear_rounded, size: 18, color: colors.textMuted),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _query = '');
+                      },
+                    )
+                  else
+                    TextButton.icon(
+                      icon: Icon(Icons.paste_rounded, size: 16, color: colors.primary),
+                      label: Text(
+                        'Dán',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colors.primary),
+                      ),
+                      onPressed: _pasteFromClipboard,
+                    ),
+                ],
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+            ),
+            onChanged: (val) {
+              setState(() => _query = val);
+            },
+            onSubmitted: (val) async {
+              if (val.trim().isNotEmpty) {
+                if (_isUrl(val)) {
+                  if (!widget.asPage) Navigator.pop(context);
+                  await appState.loadFromUrl(val.trim(), settings: settings, player: player);
+                }
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Kết quả: 1. Nếu là URL -> Hiển thị Card Tải Link Trực Tiếp
+        if (isUrlInput) ...[
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colors.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colors.primary.withValues(alpha: 0.4), width: 1.2),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.public_rounded, color: colors.primary, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Phát hiện liên kết truyện hợp lệ',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: colors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _query.trim(),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.textSecondary,
+                    fontFamily: 'monospace',
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 40,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: colors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: const Icon(Icons.download_rounded, size: 18),
+                    label: const Text(
+                      'Tải truyện từ liên kết này',
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () async {
+                      if (!widget.asPage) Navigator.pop(context);
+                      await appState.loadFromUrl(_query.trim(), settings: settings, player: player);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Tiêu đề danh sách
+        Text(
+          _query.isEmpty
+              ? 'Lịch sử'
+              : (isUrlInput
+                  ? 'Hoặc chọn từ lịch sử:'
+                  : 'Kết quả tìm kiếm ($totalStories truyện • $totalChapters chương):'),
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.bold,
+            color: colors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 6),
+
+        // Danh sách nhóm truyện trong Lịch sử hoặc Hướng dẫn cấu trúc link
+        Expanded(
+          child: filteredStories.isEmpty
+              ? SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_query.isNotEmpty) ...[
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.search_off_rounded,
+                                  size: 40,
+                                  color: colors.textMuted.withValues(alpha: 0.4),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Không tìm thấy truyện phù hợp trong lịch sử.',
+                                  style: TextStyle(fontSize: 13, color: colors.textMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      _buildLinkGuideCard(colors),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: filteredStories.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 6),
+                  itemBuilder: (ctx, index) {
+                    final storyTitle = filteredStories.keys.elementAt(index);
+                    final chapters = filteredStories[storyTitle]!;
+                    final isExpanded = _query.isNotEmpty || _expandedStories.contains(storyTitle);
+
+                    return _buildStoryGroupCard(
+                      context: context,
+                      storyTitle: storyTitle,
+                      chapters: chapters,
+                      isExpanded: isExpanded,
+                      appState: appState,
+                      settings: settings,
+                      player: player,
+                      colors: colors,
+                      onToggleExpand: () {
+                        setState(() {
+                          if (_expandedStories.contains(storyTitle)) {
+                            _expandedStories.remove(storyTitle);
+                          } else {
+                            _expandedStories.add(storyTitle);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+
+    if (widget.asPage) {
+      return GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 14,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
+          child: column,
+        ),
+      );
+    }
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.86,
       decoration: BoxDecoration(
@@ -236,289 +542,7 @@ class _StorySearchModalState extends State<StorySearchModal> {
         top: 14,
         bottom: MediaQuery.of(context).viewInsets.bottom + 16,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Thanh kéo modal
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colors.textMuted.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Header Search Modal
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.search_rounded, color: colors.primary, size: 22),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Tìm Kiếm',
-                    style: TextStyle(
-                      fontSize: 16.5,
-                      fontWeight: FontWeight.bold,
-                      color: colors.textPrimary,
-                    ),
-                  ),
-                  if (totalStories > 0) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: colors.primary.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '$totalStories truyện • $totalChapters chương',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: colors.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              Row(
-                children: [
-                  if (appState.savedAudios.isNotEmpty)
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.redAccent,
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                      ),
-                      icon: const Icon(Icons.delete_sweep_rounded, size: 17),
-                      label: const Text('Xóa hết', style: TextStyle(fontSize: 11.5)),
-                      onPressed: () => _confirmClearAll(context, appState, colors),
-                    ),
-                  IconButton(
-                    icon: Icon(Icons.close_rounded, color: colors.textMuted, size: 20),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          Divider(color: colors.border, height: 16),
-
-          // Ô nhập tìm kiếm / Dán Link
-          Container(
-            decoration: BoxDecoration(
-              color: colors.cardBackground,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isUrlInput ? colors.primary : colors.border,
-                width: isUrlInput ? 1.5 : 1.0,
-              ),
-            ),
-            child: TextField(
-              controller: _searchController,
-              focusNode: _focusNode,
-              style: TextStyle(fontSize: 13.5, color: colors.textPrimary),
-              decoration: InputDecoration(
-                hintText: 'Dán URL chương truyện (VD: https://.../chuong-1)...',
-                hintStyle: TextStyle(color: colors.textMuted, fontSize: 12.5),
-                prefixIcon: Icon(
-                  isUrlInput ? Icons.link_rounded : Icons.search_rounded,
-                  size: 20,
-                  color: isUrlInput ? colors.primary : colors.textMuted,
-                ),
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_query.isNotEmpty)
-                      IconButton(
-                        icon: Icon(Icons.clear_rounded, size: 18, color: colors.textMuted),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _query = '');
-                        },
-                      )
-                    else
-                      TextButton.icon(
-                        icon: Icon(Icons.paste_rounded, size: 16, color: colors.primary),
-                        label: Text(
-                          'Dán',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colors.primary),
-                        ),
-                        onPressed: _pasteFromClipboard,
-                      ),
-                  ],
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-              ),
-              onChanged: (val) {
-                setState(() => _query = val);
-              },
-              onSubmitted: (val) async {
-                if (val.trim().isNotEmpty) {
-                  if (_isUrl(val)) {
-                    Navigator.pop(context);
-                    await appState.loadFromUrl(val.trim(), settings: settings, player: player);
-                  }
-                }
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Kết quả: 1. Nếu là URL -> Hiển thị Card Tải Link Trực Tiếp
-          if (isUrlInput) ...[
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: colors.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colors.primary.withValues(alpha: 0.4), width: 1.2),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.public_rounded, color: colors.primary, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Phát hiện liên kết truyện hợp lệ',
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.bold,
-                          color: colors.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _query.trim(),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colors.textSecondary,
-                      fontFamily: 'monospace',
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 40,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: colors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      icon: const Icon(Icons.download_rounded, size: 18),
-                      label: const Text(
-                        'Tải truyện từ liên kết này',
-                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        await appState.loadFromUrl(_query.trim(), settings: settings, player: player);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // Tiêu đề danh sách
-          Text(
-            _query.isEmpty
-                ? 'Lịch sử'
-                : (isUrlInput
-                    ? 'Hoặc chọn từ lịch sử:'
-                    : 'Kết quả tìm kiếm ($totalStories truyện • $totalChapters chương):'),
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.bold,
-              color: colors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 6),
-
-          // Danh sách nhóm truyện trong Lịch sử hoặc Hướng dẫn cấu trúc link
-          Expanded(
-            child: filteredStories.isEmpty
-                ? SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_query.isNotEmpty) ...[
-                          Center(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 20),
-                              child: Column(
-                                children: [
-                                  Icon(
-                                    Icons.search_off_rounded,
-                                    size: 40,
-                                    color: colors.textMuted.withValues(alpha: 0.4),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Không tìm thấy truyện phù hợp trong lịch sử.',
-                                    style: TextStyle(fontSize: 13, color: colors.textMuted),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                        _buildLinkGuideCard(colors),
-                      ],
-                    ),
-                  )
-                : ListView.separated(
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: filteredStories.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 6),
-                    itemBuilder: (ctx, index) {
-                      final storyTitle = filteredStories.keys.elementAt(index);
-                      final chapters = filteredStories[storyTitle]!;
-                      final isExpanded = _query.isNotEmpty || _expandedStories.contains(storyTitle);
-
-                      return _buildStoryGroupCard(
-                        context: context,
-                        storyTitle: storyTitle,
-                        chapters: chapters,
-                        isExpanded: isExpanded,
-                        appState: appState,
-                        settings: settings,
-                        player: player,
-                        colors: colors,
-                        onToggleExpand: () {
-                          setState(() {
-                            if (_expandedStories.contains(storyTitle)) {
-                              _expandedStories.remove(storyTitle);
-                            } else {
-                              _expandedStories.add(storyTitle);
-                            }
-                          });
-                        },
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
+      child: column,
     );
   }
 
@@ -875,7 +899,7 @@ class _StorySearchModalState extends State<StorySearchModal> {
 
                 return InkWell(
                   onTap: () async {
-                    Navigator.pop(context);
+                    if (!widget.asPage) Navigator.pop(context);
                     await appState.loadSavedChapter(
                       chapter,
                       settings: settings,

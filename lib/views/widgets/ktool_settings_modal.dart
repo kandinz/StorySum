@@ -18,7 +18,11 @@ import '../../providers/settings_provider.dart';
 import '../../providers/player_state_provider.dart';
 
 class KtoolSettingsModal extends StatefulWidget {
-  const KtoolSettingsModal({Key? key}) : super(key: key);
+  final bool asPage;
+
+  const KtoolSettingsModal({Key? key, this.asPage = false}) : super(key: key);
+
+  const KtoolSettingsModal.page({Key? key}) : asPage = true, super(key: key);
 
   static void show(BuildContext context) {
     showModalBottomSheet(
@@ -84,6 +88,130 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
     final player = context.watch<PlayerStateProvider>();
     final colors = AppTheme.getColors(settings.appThemeMode, context);
 
+    final innerStack = Stack(
+      children: [
+        Column(
+          children: [
+            // Header kéo & Tiêu đề
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: colors.border)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.settings_rounded, size: 18, color: colors.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Cài Đặt',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (!widget.asPage)
+                    IconButton(
+                      icon: Icon(Icons.close_rounded, color: colors.textMuted, size: 20),
+                      onPressed: () => Navigator.pop(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                ],
+              ),
+            ),
+
+            // 3 TAB SELECTOR (Audio & Truyện - Dịch & Tóm tắt - Donate)
+            Container(
+              margin: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: colors.cardBackground,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colors.border),
+              ),
+              child: Row(
+                children: [
+                  _buildTabButton(
+                    index: 0,
+                    icon: Icons.headphones_rounded,
+                    label: 'Audio & Truyện',
+                    colors: colors,
+                  ),
+                  _buildTabButton(
+                    index: 1,
+                    icon: Icons.auto_awesome_rounded,
+                    label: 'Dịch & Tóm tắt',
+                    colors: colors,
+                  ),
+                  _buildTabButton(
+                    index: 2,
+                    icon: Icons.favorite_rounded,
+                    label: 'Donate',
+                    colors: colors,
+                  ),
+                ],
+              ),
+            ),
+
+            // Nội dung tương ứng với từng Tab
+            Expanded(
+              child: IndexedStack(
+                index: _selectedTabIndex,
+                children: [
+                  _buildAudioAndStoryTab(context, appState, settings, player, colors),
+                  _buildSummaryTab(context, appState, settings, player, colors),
+                  _buildDonateTab(context, colors),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        // Thông báo toast nhỏ gọn nằm trên popup modal
+        if (_toastMessage != null)
+          Positioned(
+            bottom: 24,
+            left: 20,
+            right: 20,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: colors.elevatedBackground,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: colors.border, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  _toastMessage!,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: colors.textPrimary,
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (widget.asPage) {
+      return innerStack;
+    }
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.88,
       decoration: BoxDecoration(
@@ -91,124 +219,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         border: Border.all(color: colors.border, width: 1.2),
       ),
-      child: Stack(
-        children: [
-          Column(
-            children: [
-              // Header kéo & Tiêu đề
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: colors.border)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.settings_rounded, size: 18, color: colors.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Cài Đặt',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: colors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.close_rounded, color: colors.textMuted, size: 20),
-                      onPressed: () => Navigator.pop(context),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-              ),
-
-              // 3 TAB SELECTOR (Audio & Truyện - Dịch & Tóm tắt - Donate)
-              Container(
-                margin: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: colors.cardBackground,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: colors.border),
-                ),
-                child: Row(
-                  children: [
-                    _buildTabButton(
-                      index: 0,
-                      icon: Icons.headphones_rounded,
-                      label: 'Audio & Truyện',
-                      colors: colors,
-                    ),
-                    _buildTabButton(
-                      index: 1,
-                      icon: Icons.auto_awesome_rounded,
-                      label: 'Dịch & Tóm tắt',
-                      colors: colors,
-                    ),
-                    _buildTabButton(
-                      index: 2,
-                      icon: Icons.favorite_rounded,
-                      label: 'Donate',
-                      colors: colors,
-                    ),
-                  ],
-                ),
-              ),
-
-              // Nội dung tương ứng với từng Tab
-              Expanded(
-                child: IndexedStack(
-                  index: _selectedTabIndex,
-                  children: [
-                    _buildAudioAndStoryTab(context, appState, settings, player, colors),
-                    _buildSummaryTab(context, appState, settings, player, colors),
-                    _buildDonateTab(context, colors),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          // Thông báo toast nhỏ gọn nằm trên popup modal
-          if (_toastMessage != null)
-            Positioned(
-              bottom: 24,
-              left: 20,
-              right: 20,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: colors.elevatedBackground,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: colors.border, width: 1),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.12),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    _toastMessage!,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: colors.textPrimary,
-                      fontWeight: FontWeight.normal,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+      child: innerStack,
     );
   }
 
