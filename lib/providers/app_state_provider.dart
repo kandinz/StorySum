@@ -91,6 +91,7 @@ class AppStateProvider extends ChangeNotifier {
   int _bgCrawlSuccessCount = 0;
   int _bgCrawlTaskId = 0;
   bool _bgCrawlPausedForPriority = false;
+  String? _summaryErrorMessage;
 
   List<SavedAudioItem> _savedAudios = [];
   List<ChapterModel> _historyChapters = [];
@@ -99,6 +100,7 @@ class AppStateProvider extends ChangeNotifier {
   bool get isProcessing => _isProcessing;
   bool get isImportingFile => _isImportingFile;
   String get currentStatusMessage => _currentStatusMessage;
+  String? get summaryErrorMessage => _summaryErrorMessage;
   double get overallProgress => _overallProgress;
   String get headerTitle => _headerTitle;
   ChapterModel? get currentChapter => _currentChapter;
@@ -451,8 +453,8 @@ class AppStateProvider extends ChangeNotifier {
       if (maxChapters != null && currentChapter > maxChapters) {
         break;
       }
-      if (consecutiveErrors >= 6) {
-        // Đã đến chương cuối cùng của truyện (404 hoặc hết chương)
+      if (consecutiveErrors >= 15) {
+        // Đã đến chương cuối cùng của truyện (404 hoặc hết chương liên tiếp)
         break;
       }
 
@@ -488,18 +490,22 @@ class AppStateProvider extends ChangeNotifier {
         continue;
       }
 
-      // 2. Tải đồng thời các chương chưa có
+      // 2. Tải đồng thời các chương chưa có (có retry 1 lần nếu gặp lỗi mạng tạm thời)
       final fetchFutures = chaptersToFetch.map((cNum) async {
-        try {
-          final targetUrl = crawlerService.buildChapterUrl(baseUrl, cNum);
-          final crawledChapter = await crawlerService.fetchChapter(
-            baseUrl: targetUrl.isNotEmpty ? targetUrl : baseUrl,
-            chapterNumber: cNum,
-          );
-          if (crawledChapter.content.trim().length > 100) {
-            return MapEntry(cNum, crawledChapter);
+        for (int attempt = 0; attempt < 2; attempt++) {
+          try {
+            final targetUrl = crawlerService.buildChapterUrl(baseUrl, cNum);
+            final crawledChapter = await crawlerService.fetchChapter(
+              baseUrl: targetUrl.isNotEmpty ? targetUrl : baseUrl,
+              chapterNumber: cNum,
+            );
+            if (crawledChapter.content.trim().length > 100) {
+              return MapEntry(cNum, crawledChapter);
+            }
+          } catch (_) {
+            if (attempt == 0) await Future.delayed(const Duration(milliseconds: 300));
           }
-        } catch (_) {}
+        }
         return MapEntry(cNum, null);
       });
 
@@ -587,16 +593,20 @@ class AppStateProvider extends ChangeNotifier {
         notifyListeners();
 
         final fetchFutures = batch.map((cNum) async {
-          try {
-            final targetUrl = crawlerService.buildChapterUrl(baseUrl, cNum);
-            final crawledChapter = await crawlerService.fetchChapter(
-              baseUrl: targetUrl.isNotEmpty ? targetUrl : baseUrl,
-              chapterNumber: cNum,
-            );
-            if (crawledChapter.content.trim().length > 100) {
-              return MapEntry(cNum, crawledChapter);
+          for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+              final targetUrl = crawlerService.buildChapterUrl(baseUrl, cNum);
+              final crawledChapter = await crawlerService.fetchChapter(
+                baseUrl: targetUrl.isNotEmpty ? targetUrl : baseUrl,
+                chapterNumber: cNum,
+              );
+              if (crawledChapter.content.trim().length > 100) {
+                return MapEntry(cNum, crawledChapter);
+              }
+            } catch (_) {
+              if (attempt == 0) await Future.delayed(const Duration(milliseconds: 300));
             }
-          } catch (_) {}
+          }
           return MapEntry(cNum, null);
         });
 
@@ -1908,6 +1918,7 @@ class AppStateProvider extends ChangeNotifier {
   /// Tự động tóm tắt chương hiện tại nếu chưa có bản tóm tắt nào
   Future<void> autoSummarizeIfEmpty(SettingsProvider settings) async {
     if (_currentChapter == null || _isProcessing) return;
+    if (settings.workingApiKeys.isEmpty) return;
     if (_summarySentences.isEmpty && (_currentSummary == null || _currentSummary!.summaryText.trim().isEmpty)) {
       await summarizeCurrentChapter(settings);
     }
@@ -1924,6 +1935,7 @@ class AppStateProvider extends ChangeNotifier {
     if (_currentChapter == null) return;
     _isProcessing = true;
     _currentStatusMessage = 'Đang tóm tắt AI...';
+    _summaryErrorMessage = null;
     notifyListeners();
     try {
       final summary = await summaryService.summarizeText(
@@ -1938,6 +1950,7 @@ class AppStateProvider extends ChangeNotifier {
         onKeyFailed: (failedKey) => settings.markKeyFailed(failedKey),
       );
       _currentSummary = summary;
+      _summaryErrorMessage = null;
       await db.insertSummary(summary);
       await _saveOrUpdateAudioItem(_currentChapter!, summary, settings);
       final rawSummary = buildSentenceListWithHeader(summary.summaryText.isNotEmpty ? summary.summaryText : _currentChapter!.content, _currentChapter!);
@@ -1950,7 +1963,8 @@ class AppStateProvider extends ChangeNotifier {
       );
       _currentStatusMessage = 'Đã tóm tắt xong!';
     } catch (e) {
-      _currentStatusMessage = 'Lỗi tóm tắt: $e';
+      _summaryErrorMessage = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      _currentStatusMessage = 'Lỗi tóm tắt: $_summaryErrorMessage';
     } finally {
       _isProcessing = false;
       notifyListeners();

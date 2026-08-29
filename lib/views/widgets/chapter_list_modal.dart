@@ -198,7 +198,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${currentStoryAudios.length} chương đã lưu • Đang đọc: Chương $currentChapterNum',
+                            'Chương mới nhất: ${currentStoryAudios.isNotEmpty ? currentStoryAudios.last.chapterNumber : currentChapterNum} • Đang đọc: Chương $currentChapterNum',
                             style: TextStyle(
                               fontSize: 11,
                               color: colors.textSecondary,

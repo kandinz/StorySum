@@ -37,12 +37,7 @@ class SummaryService {
     }
 
     if (keys.isEmpty) {
-      return _generateFallbackSummary(
-        chapterId,
-        text,
-        stopwatch.elapsedMilliseconds,
-        error: 'Chưa có API Key cho $pName. Vui lòng thêm Key trong Cài đặt > Dịch & Tóm tắt.',
-      );
+      throw Exception('Chưa có API Key cho $pName. Vui lòng thêm Key trong Cài đặt > Cấu hình AI.');
     }
 
     String lastError = '';
@@ -80,12 +75,7 @@ class SummaryService {
     }
 
     stopwatch.stop();
-    return _generateFallbackSummary(
-      chapterId,
-      text,
-      stopwatch.elapsedMilliseconds,
-      error: 'Tất cả API Key $pName đều bị lỗi/hết quota: $lastError',
-    );
+    throw Exception('Tất cả API Key $pName đều bị lỗi hoặc hết hạn mức/quota: $lastError');
   }
 
   /// Gọi API Dịch nội dung chương sang tiếng Việt với cơ chế tự động xoay vòng Key
@@ -484,43 +474,5 @@ class SummaryService {
       }
     }
     return bullets;
-  }
-
-  SummaryModel _generateFallbackSummary(String chapterId, String text, int elapsedMs, {String? error}) {
-    final paragraphs = text
-        .split('\n\n')
-        .map((p) => p.trim())
-        .where((p) => p.isNotEmpty)
-        .toList();
-
-    String summary;
-    List<String> bullets = [];
-
-    if (paragraphs.length <= 2) {
-      summary = text;
-    } else {
-      final first = paragraphs.first;
-      final mid = paragraphs[(paragraphs.length / 2).floor()];
-      final last = paragraphs.last;
-      summary = '$first\n\n$mid\n\n$last';
-      bullets = [
-        'Mở đầu: ${first.length > 80 ? "${first.substring(0, 80)}..." : first}',
-        'Diễn biến: ${mid.length > 80 ? "${mid.substring(0, 80)}..." : mid}',
-        'Kết thúc: ${last.length > 80 ? "${last.substring(0, 80)}..." : last}',
-      ];
-    }
-
-    if (error != null && error.isNotEmpty) {
-      bullets.insert(0, '⚠️ Lỗi AI: $error');
-    }
-
-    return SummaryModel(
-      id: 'sum_$chapterId',
-      chapterId: chapterId,
-      summaryText: summary,
-      bulletPoints: bullets,
-      modelUsed: 'Fallback Extractive',
-      processingTimeMs: elapsedMs,
-    );
   }
 }

@@ -716,54 +716,157 @@ class _HomeScreenState extends State<HomeScreen> {
         child: sentences.isEmpty
             ? Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: colors.elevatedBackground,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isSummary ? Icons.summarize_outlined : Icons.menu_book_outlined,
-                          size: 28,
-                          color: colors.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        isSummary
-                            ? (appState.isProcessing ? 'Đang tóm tắt AI...' : 'Chưa có bản tóm tắt cho chương này.')
-                            : (appState.isProcessing ? 'Đang tải nội dung...' : 'Chưa có nội dung truyện.'),
-                        style: TextStyle(color: colors.textMuted, fontSize: 13),
-                        textAlign: TextAlign.center,
-                      ),
-                      if (isSummary && appState.isProcessing) ...[
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+                      if (isSummary && !appState.isProcessing && settings.workingApiKeys.isEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.key_off_rounded,
+                            size: 32,
+                            color: Colors.amber,
                           ),
                         ),
-                      ] else if (isSummary && !appState.isProcessing) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Chưa có API Key cho ${settings.aiProvider}',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: colors.textPrimary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Vui lòng cấu hình API Key trong phần Cài đặt để sử dụng tính năng tóm tắt AI.',
+                          style: TextStyle(color: colors.textSecondary, fontSize: 12.5, height: 1.4),
+                          textAlign: TextAlign.center,
+                        ),
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
-                          onPressed: () => appState.summarizeCurrentChapter(settings),
-                          icon: const Icon(Icons.refresh_rounded, size: 18),
-                          label: const Text('Thử Lại Tóm Tắt AI', style: TextStyle(fontWeight: FontWeight.bold)),
+                          onPressed: () => KtoolSettingsModal.show(context),
+                          icon: const Icon(Icons.settings_rounded, size: 18),
+                          label: const Text('Mở Cài Đặt API Key', style: TextStyle(fontWeight: FontWeight.bold)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: colors.primary.withValues(alpha: 0.15),
-                            foregroundColor: colors.primary,
+                            backgroundColor: colors.primary,
+                            foregroundColor: Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                           ),
                         ),
+                      ] else if (isSummary && !appState.isProcessing && appState.summaryErrorMessage != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.error_outline_rounded,
+                            size: 32,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Không thể tóm tắt AI',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: colors.textPrimary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          appState.summaryErrorMessage!,
+                          style: TextStyle(color: colors.textSecondary, fontSize: 12.5, height: 1.4),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => KtoolSettingsModal.show(context),
+                              icon: const Icon(Icons.settings_rounded, size: 16),
+                              label: const Text('Cài Đặt', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: colors.primary,
+                                side: BorderSide(color: colors.primary.withValues(alpha: 0.5)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            ElevatedButton.icon(
+                              onPressed: () => appState.summarizeCurrentChapter(settings),
+                              icon: const Icon(Icons.refresh_rounded, size: 16),
+                              label: const Text('Thử Lại', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: colors.primary,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: colors.elevatedBackground,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isSummary ? Icons.summarize_outlined : Icons.menu_book_outlined,
+                            size: 28,
+                            color: colors.textMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          isSummary
+                              ? (appState.isProcessing ? 'Đang tóm tắt AI...' : 'Chưa có bản tóm tắt cho chương này.')
+                              : (appState.isProcessing ? 'Đang tải nội dung...' : 'Chưa có nội dung truyện.'),
+                          style: TextStyle(color: colors.textMuted, fontSize: 13),
+                          textAlign: TextAlign.center,
+                        ),
+                        if (isSummary && appState.isProcessing) ...[
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+                            ),
+                          ),
+                        ] else if (isSummary && !appState.isProcessing) ...[
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: () => appState.summarizeCurrentChapter(settings),
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text('Thử Lại Tóm Tắt AI', style: TextStyle(fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colors.primary.withValues(alpha: 0.15),
+                              foregroundColor: colors.primary,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),
