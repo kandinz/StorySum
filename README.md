@@ -1,12 +1,14 @@
 # 📖 StorySum - Trình Đọc & Nghe Truyện AI Thông Minh
 
-**StorySum** là ứng dụng di động Android chuyên dụng hỗ trợ cào nội dung truyện từ các trang web, tự động tóm tắt chương bằng AI, dịch thuật ngôn ngữ và chuyển đổi văn bản thành giọng đọc truyền cảm offline 100% theo từng câu, phát mượt mà ngay cả khi tắt màn hình.
+**StorySum** là ứng dụng Android chuyên dụng giúp bạn cào nội dung truyện từ web, tự động tóm tắt chương bằng AI, dịch thuật và chuyển đổi văn bản thành giọng đọc AI theo từng câu — phát mượt mà ngay cả khi tắt màn hình.
+
+> 🔖 **Phiên bản hiện tại: v1.0.53** | Chỉ hỗ trợ Android (ARM64-v8a)
 
 ---
 
-## ❤️ Ủng Hộ (Donate)
+## ❤️ Ụng Hộ (Donate)
 
-Nếu bạn yêu thích ứng dụng **StorySum** và thấy ứng dụng hữu ích cho quá trình trải nghiệm đọc và nghe truyện của mình, hãy ủng hộ tác giả một ly cà phê để tiếp tục duy trì, phát triển và bổ sung thêm nhiều tính năng mới nhé!
+Nếu bạn thấy **StorySum** hữu ích, hãy ủng hộ tác giả một ly cà phê để tiếp tục phát triển thêm nhiều tính năng mới!
 
 <img src="assets/icons/donate.png" alt="Mã QR Donate" width="220" />
 
@@ -16,85 +18,152 @@ Nếu bạn yêu thích ứng dụng **StorySum** và thấy ứng dụng hữu 
 
 ---
 
-## 🌟 Các Chức Năng Chính
+## 🌟 Tính Năng Chính
 
-### 1. 🌐 Cào Truyện Tự Động Từ Đường Dẫn Web
+### 1. 🌐 Cào & Tải Truyện Từ Web
 
-- Tự động nhận diện và trích xuất nội dung chương truyện từ đường dẫn (URL) của hầu hết các trang web truyện phổ biến.
-- Tự động nhận diện số chương, tên truyện, loại bỏ quảng cáo, rác trang web và giữ lại văn bản chuẩn xác.
+- **Dán link chương** trực tiếp từ URL bất kỳ của hầu hết các trang web truyện phổ biến Việt Nam (TruyenFull, WebNovel, TruyenDichMienPhi, Dtruyen...).
+- **Tự động phát hiện số chương, tên truyện**, loại bỏ quảng cáo, rác HTML và giữ lại văn bản sạch.
+- **Tự chuyển chương liên tiếp**: Ứng dụng tự động điều chỉnh URL sang chương kế tiếp mà không cần thao tác thủ công.
 
-### 2. 🤖 Tóm Tắt Chương & Dịch Thuật Bằng AI
+### 2. 📚 Kho Truyện (Lưu Offline)
 
-- **Tự động tóm tắt thông minh**: Khi chuyển sang xem tab **Tóm tắt**, hệ thống tự động kích hoạt AI để trích xuất ý chính, nhân vật và sự kiện nổi bật của chương truyện.
-- **Dịch thuật đa ngôn ngữ**: Hỗ trợ dịch tự động nội dung truyện tiếng nước ngoài (tiếng Trung, Convert, tiếng Anh...) sang tiếng Việt mượt mà, thuần Việt.
-- **Hỗ trợ đa nền tảng AI**: Dễ dàng cấu hình và sử dụng Google Gemini, OpenAI, Claude, DeepSeek hoặc các dịch vụ AI tùy chỉnh.
+- **Lưu truyện vào kho**: Thêm truyện bằng link URL, sau đó duyệt và tải từng chương trực tiếp trong ứng dụng.
+- **Tìm kiếm truyện theo tên**: Lọc nhanh trong Kho Truyện chỉ theo tên truyện.
+- **Lịch sử đã đọc**: Ghi nhớ chính xác vị trí câu đang nghe dở để tiếp tục phát lại đúng chỗ.
+- **Quản lý audio đã tạo**: Xem và phát lại các file audio câu đã tổng hợp trong mục "Đã Lưu".
 
-### 3. 🎙️ Giọng Đọc AI Offline 100% (ONNX TTS)
+### 3. 🤖 Tóm Tắt & Dịch Thuật Bằng AI (Đa Nhà Cung Cấp)
 
-- **Hoạt động hoàn toàn không cần Internet**: Chạy trực tiếp mô hình giọng đọc AI ONNX trên chip thiết bị, đảm bảo nghe truyện mọi lúc mọi nơi mà không tốn dung lượng 4G/Wifi.
-- **Tách câu thông minh**: Văn bản được tách thành từng câu độc lập. Người dùng có thể chạm vào bất kỳ câu nào để nghe phát ngay câu đó.
-- **Thêm giọng đọc tùy biến**: Cho phép nhập trực tiếp file giọng đọc mô hình `.onnx` từ bộ nhớ máy.
-- **Tùy chỉnh tốc độ đọc**: Linh hoạt thay đổi tốc độ đọc từ `0.5x` đến `2.0x`.
+- **Tự động tóm tắt thông minh**: Khi chuyển sang tab **Tóm tắt**, AI trích xuất ý chính, nhân vật và sự kiện nổi bật của chương.
+- **Dịch thuật đa ngôn ngữ**: Dịch nội dung tiếng Trung, tiếng Anh... sang tiếng Việt thuần tự nhiên.
+- **Hỗ trợ 7+ nhà cung cấp AI tích hợp sẵn**:
 
-### 4. 🎧 Phát Nền Liền Mạch & Tự Chuyển Chương
+  | Nhà cung cấp | Các model tiêu biểu |
+  |---|---|
+  | **Google Gemini** | gemini-2.5-flash-lite, gemini-2.5-flash, gemini-2.5-pro |
+  | **ChatGPT (OpenAI)** | gpt-4o-mini, gpt-4o, gpt-4.1-mini |
+  | **Claude (Anthropic)** | claude-3-5-haiku, claude-3-7-sonnet |
+  | **DeepSeek** | deepseek-chat, deepseek-reasoner |
+  | **OpenRouter** | Hàng trăm model qua một API key |
+  | **Groq** | llama-3.3-70b, mixtral-8x7b |
+  | **MiMo AI** | mimo-v2, mimo-chat |
+  | **Tùy chỉnh** | Bất kỳ endpoint tương thích OpenAI |
 
-- **Phát audio khi khóa màn hình**: Duy trì phát âm thanh liên tục trong nền (Foreground Service) ngay cả khi tắt màn hình điện thoại hoặc chuyển sang ứng dụng khác.
-- **Tự động chuyển chương (Auto-Next)**: Tự động tải và phát tiếp chương kế tiếp khi nghe hết chương hiện tại.
-- **Tải trước ngầm (Preload Audio)**: Ứng dụng tự động tải dữ liệu và tạo trước file âm thanh của chương tiếp theo trong nền để khi chuyển chương sẽ phát ngay lập tức không có độ trễ.
+- **Hỗ trợ nhiều API key luân phiên** (round-robin): Tự động chuyển sang key tiếp theo khi hết hạn hoặc lỗi.
+- **Tùy chỉnh Prompt**: Chỉnh sửa prompt tóm tắt và dịch thuật theo phong cách riêng.
 
-### 5. ⏱️ Hẹn Giờ Dừng Phát (Sleep Timer)
+### 4. 🎙️ Giọng Đọc AI Đa Nguồn
 
-- Hỗ trợ các mốc thời gian hẹn giờ tiện lợi: **15 phút, 30 phút, 45 phút, 60 phút, 90 phút, 120 phút**.
-- Đếm ngược thời gian thực và tự động ngắt phát âm thanh khi hết giờ, giúp người nghe yên tâm nghe truyện trước khi ngủ.
+| Giọng đọc | Engine | Yêu cầu mạng |
+|---|---|---|
+| Ngọc Huyền | ONNX Offline | Không cần |
+| Bông Cúc | ONNX Offline | Không cần |
+| Hoài My | Edge TTS | Cần mạng |
+| Nam Minh | Edge TTS | Cần mạng |
+| Cô gái hoạt ngôn | TikTok TTS | Cần mạng |
+| Cô gái ngọt ngào | TikTok TTS | Cần mạng |
+| Thanh niên tự tin | TikTok TTS | Cần mạng |
+| Giọng nữ phổ thông | TikTok TTS | Cần mạng |
+| Giọng tùy biến | ONNX (nhập file) | Không cần |
 
-### 6. 🎨 Tùy Biến Giao Diện Đọc & Font Chữ
+- **Tốc độ đọc linh hoạt**: Chỉnh từ 0.5x đến 2.0x.
+- **Tách câu thông minh**: Nhấn vào bất kỳ câu nào để nghe phát ngay câu đó.
+- **Tự động cuộn** theo câu đang đọc.
 
-- **5 Theme giao diện bảo vệ mắt**: Dark (Tối), Light (Sáng), System (Theo hệ thống), Sepia (Trang sách vàng chống mỏi mắt), Warm (Ấm áp ban đêm).
-- **6 Font chữ tiếng Việt sắc nét**: `Inter`, `Be Vietnam Pro`, `Lora`, `Merriweather`, `Literata`, `Roboto`.
-- **Tùy chỉnh cỡ chữ**: Kéo thanh trượt để phóng to / thu nhỏ cỡ chữ đọc truyện theo nhu cầu.
+### 5. 🎧 Phát Nền Liền Mạch & Tự Chuyển Chương
 
-### 7. 📚 Thư Viện Lưu Trữ Offline (Đã Lưu)
+- **Phát khi khóa màn hình**: Duy trì âm thanh liên tục qua Foreground Service ngay cả khi tắt màn hình hoặc chuyển ứng dụng khác.
+- **Tự chuyển chương (Auto-Next)**: Tải và phát tiếp chương kế tiếp tự động khi nghe xong chương hiện tại.
+- **Tải trước ngầm (Preload)**: Tự động tạo trước file audio chương tiếp theo trong nền để chuyển chương không có độ trễ.
+- **Tải nhanh câu tiếp theo (Lookahead)**: Liên tục sinh audio cho các câu sắp tới trong khi đang phát câu hiện tại.
 
-- Quản lý danh sách các chương và bản audio đã tạo trên máy.
-- Ghi nhớ chính xác vị trí câu đang nghe dở dang để tiếp tục phát lại đúng vị trí trong lần mở tiếp theo.
+### 6. ⏱️ Hẹn Giờ Dừng Phát (Sleep Timer)
+
+- Các mốc thời gian tiện lợi: **15, 30, 45, 60, 90, 120 phút**.
+- Đếm ngược thời gian thực, hiển thị badge ở thanh điều khiển.
+- Tự động ngắt phát khi hết giờ — tiện lợi để nghe truyện trước khi ngủ.
+
+### 7. 🎨 Tùy Biến Giao Diện
+
+- **5 Theme bảo vệ mắt**: Dark (Tối), Light (Sáng), System (Theo hệ thống), Sepia (Trang sách vàng), Warm (Ấm áp ban đêm).
+- **6 Font chữ tiếng Việt**: Inter, Be Vietnam Pro, Lora, Merriweather, Literata, Roboto.
+- **Cỡ chữ tùy chỉnh**: Kéo thanh trượt phóng to/thu nhỏ chữ.
 
 ---
 
 ## 📱 Hướng Dẫn Sử Dụng
 
-### 1. Tải & Cài Đặt Ứng Dụng
+### 1. Tải & Cài Đặt
 
-1. Truy cập mục [Releases](https://github.com/kandinz/SummaryStory/releases) của dự án.
-2. Tải về file cài đặt `app-arm64-v8a-release.apk` mới nhất.
-3. Mở file APK trên điện thoại Android và cho phép cài đặt ứng dụng.
+1. Vào mục [**Releases**](https://github.com/kandinz/SummaryStory/releases) của dự án.
+2. Tải file `app-arm64-v8a-release.apk` phiên bản mới nhất.
+3. Mở file APK trên Android và cho phép cài đặt ứng dụng từ nguồn không xác định.
 
-### 2. Cào Truyện & Đọc Chương
+---
 
-1. Mở ứng dụng StorySum.
-2. Dán link (URL) chương truyện vào ô nhập link ở đầu màn hình và nhấn **Lấy nội dung**.
-3. Ứng dụng sẽ tự động tải nội dung truyện, làm sạch văn bản và hiển thị lên màn hình.
+### 2. Đọc Truyện Từ Link Web
 
-### 3. Chuyển Đổi Qua Lại Giữa Tóm Tắt & Toàn Văn
+1. Mở **StorySum**, nhập hoặc dán link (URL) chương truyện vào ô nhập link ở đầu màn hình.
+2. Nhấn **Tải** → ứng dụng tự tải nội dung, làm sạch văn bản và hiển thị.
+3. Dùng nút **[ < ]** / **[ > ]** hoặc nhập số chương để chuyển chương.
 
-- Nhấn vào nút tab **Tóm tắt**: Hệ thống sẽ tự động tóm tắt ý chính của chương bằng AI.
-- Nhấn vào nút tab **Nội dung**: Để xem và đọc toàn văn chương truyện gốc (hoặc bản dịch).
+---
+
+### 3. Sử Dụng Kho Truyện
+
+1. Nhấn biểu tượng **Kho Truyện** (📚) ở góc trên để mở.
+2. Nhấn **"+ Thêm Truyện"** → dán link URL trang tổng quan truyện → nhấn **Tải**.
+3. Chọn truyện trong kho → chọn chương muốn đọc → nhấn **Đọc**.
+4. Dùng ô tìm kiếm để lọc truyện nhanh theo tên.
+
+---
 
 ### 4. Nghe Audio Theo Từng Câu
 
-- **Phát từ đầu**: Bấm nút **\[ ▶ \]** (Phát) ở thanh điều khiển phía dưới màn hình. Ứng dụng sẽ phát đúng nội dung của tab bạn đang xem (Tóm tắt hoặc Nội dung).
-- **Phát câu bất kỳ**: Chạm trực tiếp vào bất kỳ câu nào trong văn bản để nghe ngay câu đó.
-- **Tự động cuộn**: Ứng dụng sẽ tự động đánh dấu nổi bật và cuộn màn hình theo câu đang đọc.
+- **Phát từ đầu**: Nhấn nút **[ ▶ ]** ở thanh điều khiển phía dưới. Ứng dụng phát đúng nội dung của tab bạn đang xem (Tóm tắt hoặc Nội dung).
+- **Phát câu bất kỳ**: Nhấn trực tiếp vào bất kỳ câu nào trong văn bản.
+- **Chuyển sang Tab Tóm tắt**: AI tự động tóm tắt chương, sau đó phát audio tóm tắt.
 
-### 5. Chuyển Chương Nhanh
+---
 
-- Dùng nút **\[ &lt; \]** hoặc **\[ &gt; \]** ở thanh điều hướng dưới cùng để lùi/tiến chương.
-- Nhập trực tiếp số chương vào ô nhập số chương và nhấn Enter hoặc nút tải lại để chuyển đến đúng chương mong muốn.
+### 5. Cấu Hình API Key AI (Cho Tóm Tắt và Dịch)
 
-### 6. Cấu Hình Cài Đặt (Nút ⚙️)
+1. Nhấn nút **⚙️** (Cài đặt) → chọn tab **"Dịch & Tóm tắt"**.
+2. Chọn **Nhà cung cấp AI** (Gemini, ChatGPT, Claude, DeepSeek...).
+3. Nhập **API Key** của nhà cung cấp đã chọn (có thể thêm nhiều key để dự phòng).
+4. Chọn **Model AI** phù hợp và tùy chỉnh **Prompt** nếu cần.
 
-Nhấn vào biểu tượng **⚙️** (Cài đặt) ở góc dưới cùng bên phải để:
+> 💡 **Lấy API key miễn phí**: Google Gemini tại [aistudio.google.com](https://aistudio.google.com), DeepSeek tại [platform.deepseek.com](https://platform.deepseek.com).
 
-- **Tab Truyện**: Chọn font chữ, theme màu giao diện, cỡ chữ hiển thị.
-- **Tab Audio**: Chọn giọng đọc AI, chỉnh tốc độ đọc, bật/tắt tự động chuyển chương và đặt hẹn giờ dừng phát.
-- **Tab Tóm tắt**: Cấu hình nhà cung cấp AI (Google Gemini, OpenAI...), nhập API key, tùy chỉnh prompt tóm tắt và dịch thuật.
-- **Tab Donate**: Xem mã QR và số tài khoản để ủng hộ tác giả, tải ảnh mã QR về máy hoặc copy nhanh số tài khoản.
+---
+
+### 6. Đổi Giọng Đọc
+
+1. Nhấn **⚙️** → tab **"Audio"**.
+2. Chọn giọng đọc mong muốn từ danh sách (ONNX Offline, Edge TTS, TikTok TTS).
+3. Ứng dụng tự động tải lại audio theo giọng đọc mới.
+4. **Nhập giọng tùy biến**: Nhấn "Thêm giọng ONNX" và chọn file `.onnx` từ bộ nhớ máy.
+
+---
+
+### 7. Cài Đặt Hẹn Giờ Dừng Phát
+
+1. Nhấn **⚙️** → tab **"Audio"** → mục **"Hẹn giờ dừng phát"**.
+2. Chọn thời gian (15, 30, 45, 60, 90, 120 phút).
+3. Đếm ngược hiển thị ngay trên thanh điều khiển chính.
+
+---
+
+## 🔧 Yêu Cầu Hệ Thống
+
+- **Android 6.0+** (API 23 trở lên)
+- **Kiến trúc**: ARM64-v8a (hầu hết điện thoại Android từ 2016 trở lên)
+- **Dung lượng**: ~50 MB (bao gồm model ONNX tích hợp sẵn)
+- **Kết nối Internet**: Chỉ cần khi dùng giọng TTS Online (Edge/TikTok), tóm tắt AI hoặc cào truyện từ web
+
+---
+
+## 📄 Giấy Phép
+
+Dự án mã nguồn mở — phân phối theo giấy phép **MIT License**.
