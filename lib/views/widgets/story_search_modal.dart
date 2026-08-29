@@ -380,12 +380,23 @@ class _StorySearchModalState extends State<StorySearchModal> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               backgroundColor: colors.primary.withValues(alpha: 0.06),
             ),
-            icon: const Icon(Icons.upload_file_rounded, size: 20),
-            label: const Text(
-              'Nhập truyện từ File (.TXT, .EPUB, ...)',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            icon: appState.isImportingFile
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+                    ),
+                  )
+                : const Icon(Icons.upload_file_rounded, size: 20),
+            label: Text(
+              appState.isImportingFile
+                  ? 'Đang nhập truyện từ file...'
+                  : 'Nhập truyện từ File (.TXT, .EPUB, ...)',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
             ),
-            onPressed: appState.isProcessing
+            onPressed: appState.isImportingFile
                 ? null
                 : () async {
                     final success = await appState.importStoryFromFile(

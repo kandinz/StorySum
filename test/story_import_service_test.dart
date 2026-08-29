@@ -119,6 +119,87 @@ Sau bao gian nan, cậu đã trở thành một bậc thầy vĩ đại.
       expect(result.chapters[1].chapterTitle, 'Chương 2: Thế giới mới');
       expect(result.chapters[1].content, contains('đoàn thám hiểm dũng cảm'));
     });
+
+    test('Bỏ qua trang Mục lục (TOC) trong file EPUB để Chương 1 là chương đầu tiên', () {
+      final archive = Archive();
+
+      // 1. container.xml
+      const containerXml = '''<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>''';
+      archive.addFile(ArchiveFile('META-INF/container.xml', containerXml.length, utf8.encode(containerXml)));
+
+      // 2. content.opf có chứa toc item
+      const opfXml = '''<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Tiên Hiệp Truyền Kỳ</dc:title>
+  </metadata>
+  <manifest>
+    <item id="toc" href="toc.xhtml" properties="nav" media-type="application/xhtml+xml"/>
+    <item id="c1" href="chap1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="c2" href="chap2.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="toc"/>
+    <itemref idref="c1"/>
+    <itemref idref="c2"/>
+  </spine>
+</package>''';
+      archive.addFile(ArchiveFile('OEBPS/content.opf', opfXml.length, utf8.encode(opfXml)));
+
+      // 3. toc.xhtml (Trang mục lục)
+      const tocHtml = '''<?xml version="1.0" encoding="utf-8"?>
+<html>
+<head><title>Mục Lục</title></head>
+<body>
+  <h1>Mục Lục</h1>
+  <ul>
+    <li><a href="chap1.xhtml">Chương 1: Xuất sơn</a></li>
+    <li><a href="chap2.xhtml">Chương 2: Đạp kiếm</a></li>
+  </ul>
+</body>
+</html>''';
+      archive.addFile(ArchiveFile('OEBPS/toc.xhtml', tocHtml.length, utf8.encode(tocHtml)));
+
+      // 4. chap1.xhtml
+      const chap1Html = '''<?xml version="1.0" encoding="utf-8"?>
+<html>
+<head><title>Chương 1: Xuất sơn</title></head>
+<body>
+  <h1>Chương 1: Xuất sơn</h1>
+  <p>Thiếu niên bước xuống núi, bắt đầu con đường tu tiên đầy gian khổ nhưng hào hùng.</p>
+</body>
+</html>''';
+      archive.addFile(ArchiveFile('OEBPS/chap1.xhtml', chap1Html.length, utf8.encode(chap1Html)));
+
+      // 5. chap2.xhtml
+      const chap2Html = '''<?xml version="1.0" encoding="utf-8"?>
+<html>
+<head><title>Chương 2: Đạp kiếm</title></head>
+<body>
+  <h1>Chương 2: Đạp kiếm</h1>
+  <p>Ngự kiếm phi hành ngàn dặm, vượt qua muôn trùng núi non hiểm trở.</p>
+</body>
+</html>''';
+      archive.addFile(ArchiveFile('OEBPS/chap2.xhtml', chap2Html.length, utf8.encode(chap2Html)));
+
+      final zipBytes = ZipEncoder().encode(archive);
+      final result = service.importFromEpub(Uint8List.fromList(zipBytes), 'tien_hiep.epub');
+
+      expect(result.storyTitle, 'Tiên Hiệp Truyền Kỳ');
+      // Phải bỏ qua trang mục lục -> chỉ còn 2 chương thực sự
+      expect(result.chapters.length, 2);
+      expect(result.chapters[0].chapterNumber, 1);
+      expect(result.chapters[0].chapterTitle, 'Chương 1: Xuất sơn');
+      expect(result.chapters[0].content, contains('Thiếu niên bước xuống núi'));
+      expect(result.chapters[1].chapterNumber, 2);
+      expect(result.chapters[1].chapterTitle, 'Chương 2: Đạp kiếm');
+      expect(result.chapters[1].content, contains('Ngự kiếm phi hành'));
+    });
   });
 
   group('Chapter Grouping Logic (Nhóm 100 chương)', () {

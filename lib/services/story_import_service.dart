@@ -105,10 +105,23 @@ class StoryImportService {
 
     if (matches.length >= 2) {
       // Tìm thấy các tiêu đề chương rõ ràng
+      int assignChapNum = 1;
       for (int i = 0; i < matches.length; i++) {
         final currentMatch = matches[i];
-        final chapNum = int.tryParse(currentMatch.group(1) ?? '') ?? (i + 1);
+        final rawChapNum = int.tryParse(currentMatch.group(1) ?? '');
         final rawTitle = (currentMatch.group(2) ?? '').trim();
+        final rawTitleLower = rawTitle.toLowerCase();
+
+        // Bỏ qua nếu là chương 0 hoặc mục lục
+        if (rawChapNum == 0 ||
+            rawTitleLower == 'mục lục' ||
+            rawTitleLower == 'muc luc' ||
+            rawTitleLower == 'table of contents' ||
+            rawTitleLower == 'danh sách chương') {
+          continue;
+        }
+
+        final chapNum = rawChapNum ?? assignChapNum;
         final chapterTitle = rawTitle.isNotEmpty ? 'Chương $chapNum: $rawTitle' : 'Chương $chapNum';
 
         final startIndex = currentMatch.start;
@@ -119,6 +132,9 @@ class StoryImportService {
         content = TextNormalizer.normalize(content);
         final wordCount = content.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
 
+        // Bỏ qua nếu nội dung quá ngắn (< 30 ký tự)
+        if (content.length < 30) continue;
+
         chapters.add(ChapterModel(
           id: 'file_${storyTitle.hashCode}_$chapNum',
           storyTitle: storyTitle,
@@ -128,6 +144,8 @@ class StoryImportService {
           content: content,
           wordCount: wordCount,
         ));
+
+        assignChapNum = chapNum + 1;
       }
     } else {
       // Không có cấu trúc "Chương X", tự động phân đoạn truyện theo số từ (~2500 từ / chương)
@@ -349,6 +367,17 @@ class StoryImportService {
         // Bỏ qua các trang quá ngắn (ví dụ trang bìa, mục lục rỗng < 20 ký tự)
         if (bodyText.length < 20) continue;
 
+        // Bỏ qua trang Mục lục (TOC), Trang bìa hoặc Trang điều hướng để không bị nhận nhầm là Chương 1
+        if (_isTableOfContentsOrExcludedPage(
+          title: chapterTitle,
+          body: bodyText,
+          htmlContent: htmlContent,
+          filePath: fullFilePath,
+          idref: idref,
+        )) {
+          continue;
+        }
+
         final wordCount = bodyText.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
 
         // Đảm bảo nội dung có tiêu đề ở đầu
@@ -459,5 +488,63 @@ class StoryImportService {
           final code = int.tryParse(m.group(1)!, radix: 16);
           return code != null ? String.fromCharCode(code) : m.group(0)!;
         });
+  }
+
+  /// Kiểm tra xem một trang sách trong EPUB có phải là Mục lục (TOC), Trang bìa (Cover), hoặc Trang điều hướng cần bỏ qua
+  static bool _isTableOfContentsOrExcludedPage({
+    required String title,
+    required String body,
+    required String htmlContent,
+    required String filePath,
+    required String idref,
+  }) {
+    final lowerPath = filePath.toLowerCase();
+    final lowerId = idref.toLowerCase();
+    final lowerTitle = title.toLowerCase().trim();
+    final lowerHtml = htmlContent.toLowerCase();
+
+    // 1. Kiểm tra theo đường dẫn hoặc idref của file trong EPUB
+    final excludedPatterns = [
+      'toc', 'table-of-contents', 'tableofcontents', 'nav.', 'nav.xhtml',
+      'muc-luc', 'mucluc', 'muc_luc', 'cover', 'titlepage', 'title_page',
+      'halftitle', 'copyright', 'colophon', 'about'
+    ];
+    for (final pat in excludedPatterns) {
+      if (lowerPath.contains(pat) || lowerId.contains(pat)) {
+        return true;
+      }
+    }
+
+    // 2. Kiểm tra các thuộc tính EPUB3 nav hoặc HTML tag toc
+    if (lowerHtml.contains('epub:type="toc"') ||
+        lowerHtml.contains('class="toc"') ||
+        lowerHtml.contains('id="toc"') ||
+        lowerHtml.contains('class="table-of-contents"') ||
+        lowerHtml.contains('<nav id="toc"') ||
+        lowerHtml.contains('properties="nav"')) {
+      return true;
+    }
+
+    // 3. Kiểm tra Tiêu đề chương trích xuất
+    final tocTitles = [
+      'mục lục', 'muc luc', 'table of contents', 'contents', 'toc',
+      'danh sách chương', 'danh sach chuong', 'bìa', 'trang bìa', 'cover',
+      'thông tin xuất bản', 'giới thiệu tác phẩm', 'lời tựa'
+    ];
+    for (final tt in tocTitles) {
+      if (lowerTitle == tt || lowerTitle.startsWith('$tt:') || lowerTitle.startsWith('$tt -')) {
+        return true;
+      }
+    }
+
+    // 4. Kiểm tra nội dung văn bản nếu ngắn và chứa nhiều danh mục chương
+    if (body.length < 2500) {
+      final chapCount = RegExp(r'(?:chương|chap|chapter|hồi)\s*\d+', caseSensitive: false).allMatches(body).length;
+      if (chapCount >= 4) {
+        return true; // Đây là trang liệt kê danh sách chương (Mục lục)
+      }
+    }
+
+    return false;
   }
 }

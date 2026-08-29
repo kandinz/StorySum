@@ -7,8 +7,6 @@ import '../models/chapter_model.dart';
 import '../core/utils/text_normalizer.dart';
 
 class CrawlerService {
-  final http.Client _httpClient = http.Client();
-
   final Map<String, String> _headers = {
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -48,7 +46,7 @@ class CrawlerService {
     return null;
   }
 
-  /// Tải nội dung web an toàn, tự động dùng DoH + Socket SNI nếu bị chặn kết nối
+  /// Tải nội dung web an toàn, tự động giải nén Gzip/Deflate, timeouts và DoH fallback
   Future<String> fetchUrlContent(String url, {Map<String, String>? customHeaders}) async {
     final normalized = normalizeUrl(url);
     final uri = Uri.parse(normalized);
@@ -57,52 +55,79 @@ class CrawlerService {
       if (customHeaders != null) ...customHeaders,
     };
 
-    // 1. Thử tải qua HTTP thông thường với Connection Keep-Alive
+    // 1. Thử tải qua HttpClient với autoUncompress = true & Connection: close
     try {
-      final response = await _httpClient
-          .get(uri, headers: mergedHeaders)
-          .timeout(const Duration(seconds: 12));
-      if (response.statusCode == 200) {
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 10);
+      client.autoUncompress = true;
+      client.badCertificateCallback = ((cert, host, port) => true);
+
+      try {
+        final req = await client.getUrl(uri).timeout(const Duration(seconds: 10));
+        for (var entry in mergedHeaders.entries) {
+          req.headers.set(entry.key, entry.value);
+        }
+        req.headers.set('Connection', 'close');
+
+        final resp = await req.close().timeout(const Duration(seconds: 12));
+        if (resp.statusCode == 200) {
+          return await resp.transform(utf8.decoder).join();
+        }
+      } finally {
+        client.close(force: true);
+      }
+    } catch (_) {}
+
+    // 2. Fallback: Phân giải DoH và gửi request với SNI Host Header (Bypass ISP block & DNS Hijacking)
+    try {
+      final host = uri.host;
+      final targetIp = await resolveDoH(host);
+      if (targetIp != null && targetIp != host) {
+        final client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 10);
+        client.autoUncompress = true;
+        client.badCertificateCallback = ((cert, host, port) => true);
+
         try {
-          return utf8.decode(response.bodyBytes);
-        } catch (_) {
-          return response.body;
+          final port = uri.hasPort ? uri.port : (uri.scheme == 'http' ? 80 : 443);
+          final path = uri.hasQuery ? '${uri.path}?${uri.query}' : (uri.path.isEmpty ? '/' : uri.path);
+          final directUri = Uri(
+            scheme: uri.scheme,
+            host: targetIp,
+            port: port,
+            path: path,
+          );
+
+          final req = await client.getUrl(directUri).timeout(const Duration(seconds: 10));
+          for (var entry in mergedHeaders.entries) {
+            req.headers.set(entry.key, entry.value);
+          }
+          req.headers.set('Host', host);
+          req.headers.set('Connection', 'close');
+
+          final resp = await req.close().timeout(const Duration(seconds: 12));
+          if (resp.statusCode == 200) {
+            return await resp.transform(utf8.decoder).join();
+          }
+        } finally {
+          client.close(force: true);
         }
       }
     } catch (_) {}
 
-    // 2. Fallback: Kết nối trực tiếp qua Socket với IP phân giải từ DoH (Bypass ISP block & DNS Hijacking)
+    // 3. Fallback cuối: http.get tiêu chuẩn
     try {
-      final host = uri.host;
-      final port = uri.hasPort ? uri.port : (uri.scheme == 'http' ? 80 : 443);
-      final targetIp = await resolveDoH(host) ?? host;
-
-      final rawSocket = await Socket.connect(targetIp, port, timeout: const Duration(seconds: 10));
-      Socket activeSocket = rawSocket;
-      if (uri.scheme == 'https') {
-        activeSocket = await SecureSocket.secure(rawSocket, host: host);
+      final resp = await http.get(uri, headers: mergedHeaders).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        try {
+          return utf8.decode(resp.bodyBytes);
+        } catch (_) {
+          return resp.body;
+        }
       }
-
-      final path = uri.hasQuery ? '${uri.path}?${uri.query}' : (uri.path.isEmpty ? '/' : uri.path);
-      final buf = StringBuffer();
-      buf.write('GET $path HTTP/1.1\r\n');
-      buf.write('Host: $host\r\n');
-      for (var entry in mergedHeaders.entries) {
-        buf.write('${entry.key}: ${entry.value}\r\n');
-      }
-      buf.write('Connection: close\r\n\r\n');
-
-      activeSocket.write(buf.toString());
-      await activeSocket.flush();
-
-      final rawResp = await utf8.decodeStream(activeSocket);
-      final splitIdx = rawResp.indexOf('\r\n\r\n');
-      if (splitIdx != -1) {
-        return rawResp.substring(splitIdx + 4);
-      }
-      return rawResp;
+      throw Exception('Mã phản hồi máy chủ: ${resp.statusCode}');
     } catch (e) {
-      throw Exception('Không thể kết nối đến máy chủ: $e');
+      throw Exception('Không thể kết nối đến máy chủ ($url): $e');
     }
   }
 

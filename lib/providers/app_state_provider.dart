@@ -84,6 +84,7 @@ class AppStateProvider extends ChangeNotifier {
   // Background Story Crawler & File Import State
   final StoryImportService storyImportService = StoryImportService();
   bool _isBackgroundCrawling = false;
+  bool _isImportingFile = false;
   String? _bgCrawlStoryTitle;
   String? _bgCrawlBaseUrl;
   int _bgCrawlCurrentChapter = 0;
@@ -96,6 +97,7 @@ class AppStateProvider extends ChangeNotifier {
 
   // Getters
   bool get isProcessing => _isProcessing;
+  bool get isImportingFile => _isImportingFile;
   String get currentStatusMessage => _currentStatusMessage;
   double get overallProgress => _overallProgress;
   String get headerTitle => _headerTitle;
@@ -661,22 +663,15 @@ class AppStateProvider extends ChangeNotifier {
     required PlayerStateProvider player,
   }) async {
     try {
-      _isProcessing = true;
-      _currentStatusMessage = 'Đang đọc và phân tích tệp tin...';
-      _headerTitle = 'Đang nhập truyện...';
+      _isImportingFile = true;
       notifyListeners();
 
       final result = await storyImportService.pickAndImportStory();
       if (result == null) {
-        _isProcessing = false;
-        _currentStatusMessage = '';
-        _headerTitle = 'Đọc & Tóm tắt Truyện';
+        _isImportingFile = false;
         notifyListeners();
         return false;
       }
-
-      _currentStatusMessage = 'Đang lưu ${result.chapters.length} chương truyện "${result.storyTitle}"...';
-      notifyListeners();
 
       // Lưu hàng loạt chương vào database bằng Transaction Batch
       await db.insertChaptersBatch(result.chapters);
@@ -699,8 +694,7 @@ class AppStateProvider extends ChangeNotifier {
       _savedAudios = await db.getAllSavedAudios();
       _historyChapters = await db.getAllChapters();
 
-      _isProcessing = false;
-      _currentStatusMessage = 'Đã nhập thành công ${result.chapters.length} chương!';
+      _isImportingFile = false;
       notifyListeners();
 
       // Mở truyện mới nhập ra đọc ngay tại chương 1
@@ -708,9 +702,7 @@ class AppStateProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _isProcessing = false;
-      _currentStatusMessage = 'Lỗi nhập truyện: $e';
-      _headerTitle = 'Đọc & Tóm tắt Truyện';
+      _isImportingFile = false;
       notifyListeners();
       return false;
     }

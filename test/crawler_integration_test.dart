@@ -24,12 +24,19 @@ void main() {
     }, timeout: const Timeout(Duration(seconds: 15)));
 
     test('Crawl mtruyen.net chapter', () async {
-      const mtruyenUrl = 'https://mtruyen.net/truyen/tien-nghich/chuong-25';
+      const mtruyenUrl = 'https://mtruyen.net/truyen/tien-nghich/chuong-109';
       try {
         final chapter = await crawler.crawlChapterFromUrl(mtruyenUrl).timeout(const Duration(seconds: 10));
         expect(chapter.storyTitle, contains('Tiên Nghịch'));
         expect(chapter.chapterTitle, isNotEmpty);
         expect(chapter.wordCount, greaterThan(50));
+
+        final nextUrl = crawler.buildChapterUrl(mtruyenUrl, 110);
+        expect(nextUrl, equals('https://mtruyen.net/truyen/tien-nghich/chuong-110'));
+        final nextChapter = await crawler.crawlChapterFromUrl(nextUrl).timeout(const Duration(seconds: 10));
+        expect(nextChapter.storyTitle, contains('Tiên Nghịch'));
+        expect(nextChapter.chapterNumber, equals(110));
+        expect(nextChapter.wordCount, greaterThan(50));
       } on SocketException catch (_) {
         // Bỏ qua nếu offline
       } catch (e) {
@@ -38,6 +45,6 @@ void main() {
         }
         rethrow;
       }
-    }, timeout: const Timeout(Duration(seconds: 15)));
+    }, timeout: const Timeout(Duration(seconds: 20)));
   });
 }
