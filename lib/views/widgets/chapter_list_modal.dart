@@ -59,13 +59,30 @@ class _ChapterListModalState extends State<ChapterListModal> {
             ? appState.lastPlayedStoryTitle!.trim()
             : 'Truyện hiện tại');
 
-    // Lọc danh sách chương của truyện hiện tại
-    final currentStoryAudios = appState.savedAudios
-        .where((a) => a.storyTitle.trim().toLowerCase() == storyTitle.toLowerCase())
-        .toList();
+    // Lọc và hợp nhất danh sách chương của truyện hiện tại từ cả savedAudios và historyChapters
+    final Map<int, SavedAudioItem> chapterMap = {};
+    for (final item in appState.savedAudios) {
+      if (AppStateProvider.isSameStory(item.storyTitle, storyTitle)) {
+        chapterMap[item.chapterNumber] = item;
+      }
+    }
+    for (final chap in appState.historyChapters) {
+      if (AppStateProvider.isSameStory(chap.storyTitle, storyTitle) && !chapterMap.containsKey(chap.chapterNumber)) {
+        chapterMap[chap.chapterNumber] = SavedAudioItem(
+          id: 'audio_${chap.id}',
+          title: chap.chapterTitle,
+          storyTitle: storyTitle,
+          chapterNumber: chap.chapterNumber,
+          audioPath: '',
+          content: chap.content,
+          chapterId: chap.id,
+          voiceUsed: settings.currentVoice.name,
+        );
+      }
+    }
 
-    // Sắp xếp số chương tăng dần (1, 2, 3...)
-    currentStoryAudios.sort((a, b) => a.chapterNumber.compareTo(b.chapterNumber));
+    final currentStoryAudios = chapterMap.values.toList()
+      ..sort((a, b) => a.chapterNumber.compareTo(b.chapterNumber));
 
     final currentChapterNum = appState.currentChapter?.chapterNumber ??
         int.tryParse(appState.chapterController.text.trim()) ??
@@ -438,31 +455,15 @@ class _ChapterListModalState extends State<ChapterListModal> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                chapter.title.isNotEmpty ? chapter.title : 'Chương ${chapter.chapterNumber}',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
-                                  color: isCurrent ? colors.primary : colors.textPrimary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              if (chapter.content != null && chapter.content!.isNotEmpty) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Đã tải sẵn • ${chapter.content!.split(RegExp(r'\s+')).length} từ',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: colors.textMuted,
-                                  ),
-                                ),
-                              ],
-                            ],
+                          child: Text(
+                            chapter.title.isNotEmpty ? chapter.title : 'Chương ${chapter.chapterNumber}',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                              color: isCurrent ? colors.primary : colors.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (isCurrent) ...[

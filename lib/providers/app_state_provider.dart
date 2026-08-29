@@ -377,6 +377,15 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
+  /// So sánh hai tên truyện linh hoạt (loại bỏ tiền tố Truyện, khoảng trắng thừa, chữ hoa/thường)
+  static bool isSameStory(String titleA, String titleB) {
+    final cleanA = titleA.toLowerCase().replaceAll(RegExp(r'^(truyện|truyen)\s+'), '').trim();
+    final cleanB = titleB.toLowerCase().replaceAll(RegExp(r'^(truyện|truyen)\s+'), '').trim();
+    if (cleanA.isEmpty || cleanB.isEmpty) return false;
+    if (cleanA == cleanB) return true;
+    return cleanA.contains(cleanB) || cleanB.contains(cleanA);
+  }
+
   /// Dừng tiến trình tải ngầm truyện
   void stopBackgroundCrawl() {
     _isBackgroundCrawling = false;
@@ -460,28 +469,34 @@ class AppStateProvider extends ChangeNotifier {
         );
 
         if (crawledChapter.content.trim().length > 100) {
-          // Lưu vào database
-          await db.insertChapter(crawledChapter);
+          // Chuẩn hóa tên truyện đồng nhất với truyện đang crawl
+          final normalizedChapter = crawledChapter.copyWith(
+            storyTitle: storyTitle,
+          );
+          await db.insertChapter(normalizedChapter);
 
           final audioItem = SavedAudioItem(
-            id: 'audio_${crawledChapter.id}',
-            title: crawledChapter.chapterTitle,
-            storyTitle: crawledChapter.storyTitle,
-            chapterNumber: crawledChapter.chapterNumber,
+            id: 'audio_${normalizedChapter.id}',
+            title: normalizedChapter.chapterTitle,
+            storyTitle: storyTitle,
+            chapterNumber: normalizedChapter.chapterNumber,
             audioPath: '',
-            content: crawledChapter.content,
-            chapterId: crawledChapter.id,
+            content: normalizedChapter.content,
+            chapterId: normalizedChapter.id,
             voiceUsed: settings.currentVoice.name,
           );
           await db.insertAudio(audioItem);
 
           // Cập nhật danh sách in-memory nếu đang ở truyện này
-          final idx = _savedAudios.indexWhere((a) => a.id == audioItem.id);
-          if (idx == -1) {
-            _savedAudios.insert(0, audioItem);
-          } else {
-            _savedAudios[idx] = audioItem;
-          }
+          _savedAudios.removeWhere((a) =>
+              isSameStory(a.storyTitle, storyTitle) &&
+              a.chapterNumber == audioItem.chapterNumber);
+          _savedAudios.insert(0, audioItem);
+
+          _historyChapters.removeWhere((c) =>
+              isSameStory(c.storyTitle, storyTitle) &&
+              c.chapterNumber == normalizedChapter.chapterNumber);
+          _historyChapters.insert(0, normalizedChapter);
 
           _bgCrawlSuccessCount++;
           consecutiveErrors = 0;
@@ -688,7 +703,7 @@ class AppStateProvider extends ChangeNotifier {
     if (cleanStoryTitle != null && cleanStoryTitle.isNotEmpty) {
       final memoryMatch = _savedAudios.where((a) {
         return a.chapterNumber == chapterNum &&
-            a.storyTitle.toLowerCase().trim() == cleanStoryTitle.toLowerCase();
+            isSameStory(a.storyTitle, cleanStoryTitle);
       }).toList();
 
       if (memoryMatch.isNotEmpty) {
@@ -697,6 +712,13 @@ class AppStateProvider extends ChangeNotifier {
 
       final dbMatch = await db.getSavedAudioByStoryAndNumber(cleanStoryTitle, chapterNum);
       if (dbMatch != null) return dbMatch;
+
+      final allAudios = await db.getAllSavedAudios();
+      for (final a in allAudios) {
+        if (a.chapterNumber == chapterNum && isSameStory(a.storyTitle, cleanStoryTitle)) {
+          return a;
+        }
+      }
       return null;
     }
 
@@ -2004,14 +2026,20 @@ class AppStateProvider extends ChangeNotifier {
           }
         }
 
+        final normalizedStoryTitle = currentStoryTitle.trim().isNotEmpty ? currentStoryTitle.trim() : chapter.storyTitle;
+        chapter = chapter.copyWith(storyTitle: normalizedStoryTitle);
+
         await db.insertChapter(chapter);
         _historyChapters.removeWhere((c) =>
-            c.storyTitle.toLowerCase().trim() == chapter.storyTitle.toLowerCase().trim() &&
+            isSameStory(c.storyTitle, normalizedStoryTitle) &&
             c.chapterNumber == chapter.chapterNumber);
         _historyChapters.insert(0, chapter);
       }
 
       if (taskId != _preloadTaskId) return null;
+
+      final normalizedStoryTitle = currentStoryTitle.trim().isNotEmpty ? currentStoryTitle.trim() : chapter.storyTitle;
+      chapter = chapter.copyWith(storyTitle: normalizedStoryTitle);
 
       SummaryModel? summary;
       try {
@@ -2070,7 +2098,7 @@ class AppStateProvider extends ChangeNotifier {
       final audioItem = SavedAudioItem(
         id: 'audio_${chapter.id}',
         title: chapter.chapterTitle,
-        storyTitle: chapter.storyTitle,
+        storyTitle: normalizedStoryTitle,
         chapterNumber: chapter.chapterNumber,
         audioPath: '',
         summaryText: summary?.summaryText ?? '',
@@ -2081,7 +2109,7 @@ class AppStateProvider extends ChangeNotifier {
 
       await db.insertAudio(audioItem);
       _savedAudios.removeWhere((a) =>
-          a.storyTitle.toLowerCase().trim() == chapter.storyTitle.toLowerCase().trim() &&
+          isSameStory(a.storyTitle, normalizedStoryTitle) &&
           a.chapterNumber == chapter.chapterNumber);
       _savedAudios.insert(0, audioItem);
 
