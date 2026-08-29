@@ -8,6 +8,7 @@ import '../providers/player_state_provider.dart';
 import '../providers/settings_provider.dart';
 import 'widgets/ktool_settings_modal.dart';
 import 'widgets/story_search_modal.dart';
+import 'widgets/chapter_list_modal.dart';
 
 enum StoryViewTab {
   summary,
@@ -157,6 +158,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(width: 8),
 
+                    // Nút Icon Menu danh sách chương (Kế bên input số chương)
+                    _buildChapterMenuButton(
+                      context: context,
+                      colors: colors,
+                    ),
+                    const SizedBox(width: 8),
+
                     // Nút [ ▶ / ⏸ ] (Phát / Tạm dừng audio)
                     _buildPlayPauseButton(
                       isPlaying: player.isPlaying,
@@ -205,7 +213,11 @@ class _HomeScreenState extends State<HomeScreen> {
     PlayerStateProvider player,
     AppThemeColors colors,
   ) {
-    return const StorySearchModal.page();
+    return StorySearchModal.page(
+      onStoryOpened: () {
+        setState(() => _activeNavTab = NavTab.reader);
+      },
+    );
   }
 
   /// Tab Đọc truyện
@@ -876,6 +888,38 @@ class _HomeScreenState extends State<HomeScreen> {
               appState.reloadCurrentChapter(settings: settings, player: player);
             }
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChapterMenuButton({
+    required BuildContext context,
+    required AppThemeColors colors,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: Tooltip(
+        message: 'Danh sách chương',
+        child: InkWell(
+          onTap: () => ChapterListModal.show(context),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: colors.cardBackground,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: colors.border, width: 1.2),
+            ),
+            child: Center(
+              child: Icon(
+                Icons.format_list_bulleted_rounded,
+                color: colors.primary,
+                size: 20,
+              ),
+            ),
+          ),
         ),
       ),
     );

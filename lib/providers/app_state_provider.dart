@@ -10,6 +10,7 @@ import '../services/crawler_service.dart';
 import '../services/summary_service.dart';
 import '../services/onnx_tts_service.dart';
 import '../services/unified_tts_service.dart';
+import '../services/story_import_service.dart';
 import '../models/voice_model.dart';
 import '../core/database/database_helper.dart';
 import '../core/constants/app_constants.dart';
@@ -80,6 +81,16 @@ class AppStateProvider extends ChangeNotifier {
   int _preloadTaskId = 0;
   Future<PreloadedChapter?>? _inFlightPreloadFuture;
 
+  // Background Story Crawler & File Import State
+  final StoryImportService storyImportService = StoryImportService();
+  bool _isBackgroundCrawling = false;
+  String? _bgCrawlStoryTitle;
+  String? _bgCrawlBaseUrl;
+  int _bgCrawlCurrentChapter = 0;
+  int _bgCrawlSuccessCount = 0;
+  int _bgCrawlTaskId = 0;
+  bool _bgCrawlPausedForPriority = false;
+
   List<SavedAudioItem> _savedAudios = [];
   List<ChapterModel> _historyChapters = [];
 
@@ -90,6 +101,13 @@ class AppStateProvider extends ChangeNotifier {
   String get headerTitle => _headerTitle;
   ChapterModel? get currentChapter => _currentChapter;
   SummaryModel? get currentSummary => _currentSummary;
+
+  // Background crawler getters
+  bool get isBackgroundCrawling => _isBackgroundCrawling;
+  String? get bgCrawlStoryTitle => _bgCrawlStoryTitle;
+  String? get bgCrawlBaseUrl => _bgCrawlBaseUrl;
+  int get bgCrawlCurrentChapter => _bgCrawlCurrentChapter;
+  int get bgCrawlSuccessCount => _bgCrawlSuccessCount;
 
   List<SentenceItem> get summarySentences => _summarySentences;
   List<SentenceItem> get contentSentences => _contentSentences;
@@ -347,6 +365,297 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
 
     await reloadCurrentChapter(settings: settings, player: player, forceRefresh: true);
+
+    // Tự động khởi động tiến trình tải ngầm toàn bộ truyện từ chương 1 đến hết
+    if (_currentChapter != null && _currentChapter!.storyTitle.isNotEmpty) {
+      startBackgroundStoryCrawl(
+        baseUrl: trimmed,
+        storyTitle: _currentChapter!.storyTitle,
+        settings: settings,
+        startChapter: 1,
+      );
+    }
+  }
+
+  /// Dừng tiến trình tải ngầm truyện
+  void stopBackgroundCrawl() {
+    _isBackgroundCrawling = false;
+    _bgCrawlStoryTitle = null;
+    _bgCrawlTaskId++;
+    notifyListeners();
+  }
+
+  /// Bắt đầu crawl ngầm toàn bộ truyện từ chương 1 đến chương cuối
+  void startBackgroundStoryCrawl({
+    required String baseUrl,
+    required String storyTitle,
+    required SettingsProvider settings,
+    int startChapter = 1,
+    int? maxChapters,
+  }) {
+    if (baseUrl.trim().isEmpty || storyTitle.trim().isEmpty) return;
+    if (baseUrl.startsWith('file://')) return; // File offline không cần crawl
+
+    _bgCrawlTaskId++;
+    final currentTaskId = _bgCrawlTaskId;
+
+    _isBackgroundCrawling = true;
+    _bgCrawlStoryTitle = storyTitle;
+    _bgCrawlBaseUrl = baseUrl;
+    _bgCrawlCurrentChapter = startChapter;
+    _bgCrawlSuccessCount = 0;
+    notifyListeners();
+
+    _runBackgroundCrawlLoop(
+      taskId: currentTaskId,
+      baseUrl: baseUrl,
+      storyTitle: storyTitle,
+      settings: settings,
+      startChapter: startChapter,
+      maxChapters: maxChapters,
+    );
+  }
+
+  Future<void> _runBackgroundCrawlLoop({
+    required int taskId,
+    required String baseUrl,
+    required String storyTitle,
+    required SettingsProvider settings,
+    required int startChapter,
+    int? maxChapters,
+  }) async {
+    int consecutiveErrors = 0;
+    int currentChapter = startChapter;
+
+    while (_isBackgroundCrawling && taskId == _bgCrawlTaskId) {
+      if (maxChapters != null && currentChapter > maxChapters) {
+        break;
+      }
+      if (consecutiveErrors >= 4) {
+        // Đã đến chương cuối cùng của truyện (404 hoặc hết chương)
+        break;
+      }
+
+      // Nếu người dùng đang thao tác tải ưu tiên 1 chương nào đó -> tạm dừng worker ngầm nhường băng thông
+      while (_bgCrawlPausedForPriority && _isBackgroundCrawling && taskId == _bgCrawlTaskId) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      if (!_isBackgroundCrawling || taskId != _bgCrawlTaskId) break;
+
+      _bgCrawlCurrentChapter = currentChapter;
+
+      // 1. Kiểm tra nếu chương đã được lưu trong DB -> Bỏ qua tải lại
+      final existingChapter = await db.getChapterByStoryAndNumber(storyTitle, currentChapter);
+      if (existingChapter != null && existingChapter.content.trim().isNotEmpty) {
+        currentChapter++;
+        consecutiveErrors = 0;
+        continue;
+      }
+
+      try {
+        final targetUrl = crawlerService.buildChapterUrl(baseUrl, currentChapter);
+        final crawledChapter = await crawlerService.fetchChapter(
+          baseUrl: targetUrl.isNotEmpty ? targetUrl : baseUrl,
+          chapterNumber: currentChapter,
+        );
+
+        if (crawledChapter.content.trim().length > 100) {
+          // Lưu vào database
+          await db.insertChapter(crawledChapter);
+
+          final audioItem = SavedAudioItem(
+            id: 'audio_${crawledChapter.id}',
+            title: crawledChapter.chapterTitle,
+            storyTitle: crawledChapter.storyTitle,
+            chapterNumber: crawledChapter.chapterNumber,
+            audioPath: '',
+            content: crawledChapter.content,
+            chapterId: crawledChapter.id,
+            voiceUsed: settings.currentVoice.name,
+          );
+          await db.insertAudio(audioItem);
+
+          // Cập nhật danh sách in-memory nếu đang ở truyện này
+          final idx = _savedAudios.indexWhere((a) => a.id == audioItem.id);
+          if (idx == -1) {
+            _savedAudios.insert(0, audioItem);
+          } else {
+            _savedAudios[idx] = audioItem;
+          }
+
+          _bgCrawlSuccessCount++;
+          consecutiveErrors = 0;
+          notifyListeners();
+        } else {
+          consecutiveErrors++;
+        }
+      } catch (e) {
+        consecutiveErrors++;
+      }
+
+      currentChapter++;
+      // Delay giữa các chương để không làm quá tải server
+      await Future.delayed(const Duration(milliseconds: 350));
+    }
+
+    if (taskId == _bgCrawlTaskId) {
+      _isBackgroundCrawling = false;
+      notifyListeners();
+    }
+  }
+
+  /// Nhập truyện từ file (TXT, EPUB,...) và mở truyện đọc ngay lập tức
+  Future<bool> importStoryFromFile({
+    required SettingsProvider settings,
+    required PlayerStateProvider player,
+  }) async {
+    try {
+      final result = await storyImportService.pickAndImportStory();
+      if (result == null) return false;
+
+      _isProcessing = true;
+      _currentStatusMessage = 'Đang lưu ${result.chapters.length} chương truyện "${result.storyTitle}"...';
+      _headerTitle = 'Đang nhập truyện...';
+      notifyListeners();
+
+      // Lưu hàng loạt chương vào database bằng Transaction Batch
+      await db.insertChaptersBatch(result.chapters);
+
+      // Tạo và lưu danh sách SavedAudioItem
+      final audioItems = result.chapters.map((chap) => SavedAudioItem(
+        id: 'audio_${chap.id}',
+        title: chap.chapterTitle,
+        storyTitle: chap.storyTitle,
+        chapterNumber: chap.chapterNumber,
+        audioPath: '',
+        content: chap.content,
+        chapterId: chap.id,
+        voiceUsed: settings.currentVoice.name,
+      )).toList();
+
+      await db.insertAudiosBatch(audioItems);
+
+      // Cập nhật danh sách _savedAudios và _historyChapters
+      _savedAudios = await db.getAllSavedAudios();
+      _historyChapters = await db.getAllChapters();
+
+      _isProcessing = false;
+      _currentStatusMessage = 'Đã nhập thành công ${result.chapters.length} chương!';
+      notifyListeners();
+
+      // Mở truyện mới nhập ra đọc ngay tại chương 1
+      await selectStory(result.storyTitle, settings: settings, player: player);
+
+      return true;
+    } catch (e) {
+      _isProcessing = false;
+      _currentStatusMessage = 'Lỗi nhập truyện: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Chọn một truyện từ kho truyện (tự động tải chương đang đọc gần nhất hoặc chương 1)
+  Future<void> selectStory(
+    String storyTitle, {
+    required SettingsProvider settings,
+    required PlayerStateProvider player,
+    int? targetChapterNumber,
+  }) async {
+    final cleanTitle = storyTitle.trim().toLowerCase();
+    final storyChapters = _savedAudios
+        .where((a) => a.storyTitle.trim().toLowerCase() == cleanTitle)
+        .toList();
+
+    if (storyChapters.isEmpty) {
+      final dbChapters = await db.getChaptersByStory(storyTitle);
+      if (dbChapters.isNotEmpty) {
+        final firstChap = dbChapters.first;
+        final targetNum = targetChapterNumber ?? firstChap.chapterNumber;
+        chapterController.text = targetNum.toString();
+        if (firstChap.sourceUrl.isNotEmpty) {
+          urlController.text = firstChap.sourceUrl;
+        }
+        await reloadCurrentChapter(settings: settings, player: player);
+        return;
+      }
+      return;
+    }
+
+    storyChapters.sort((a, b) => a.chapterNumber.compareTo(b.chapterNumber));
+    SavedAudioItem targetItem = storyChapters.first;
+
+    if (targetChapterNumber != null) {
+      final match = storyChapters.where((c) => c.chapterNumber == targetChapterNumber).toList();
+      if (match.isNotEmpty) targetItem = match.first;
+    } else {
+      // Tìm chương đọc gần nhất
+      SavedAudioItem? latestPlayed;
+      for (final c in storyChapters) {
+        if (c.lastPlayedAt != null) {
+          if (latestPlayed == null || c.lastPlayedAt!.isAfter(latestPlayed.lastPlayedAt!)) {
+            latestPlayed = c;
+          }
+        }
+      }
+      if (latestPlayed != null) {
+        targetItem = latestPlayed;
+      }
+    }
+
+    await loadSavedChapter(
+      targetItem,
+      settings: settings,
+      player: player,
+      focusLastPlayed: true,
+    );
+  }
+
+  /// Chuyển thẳng đến chương được chỉ định (Ưu tiên nạp từ đã lưu nếu có, nếu chưa có thì tải ưu tiên ngay lập tức)
+  Future<void> changeToChapter(
+    int chapterNumber, {
+    required SettingsProvider settings,
+    required PlayerStateProvider player,
+  }) async {
+    chapterController.text = chapterNumber.toString();
+    final currentUrl = urlController.text.trim();
+    if (currentUrl.isNotEmpty && !currentUrl.startsWith('file://')) {
+      final updatedUrl = crawlerService.buildChapterUrl(currentUrl, chapterNumber);
+      if (updatedUrl.isNotEmpty) {
+        urlController.text = updatedUrl;
+      }
+    }
+    notifyListeners();
+
+    // 1. Kiểm tra trong danh sách Đã lưu
+    final savedItem = await _findSavedAudio(chapterNumber, _currentChapter?.storyTitle);
+    if (savedItem != null) {
+      await loadSavedChapter(
+        savedItem,
+        settings: settings,
+        player: player,
+        focusLastPlayed: true,
+      );
+      return;
+    }
+
+    // 2. Nếu chưa có, tải trực tiếp chương này với độ ưu tiên cao nhất
+    await reloadCurrentChapter(
+      settings: settings,
+      player: player,
+      forceRefresh: true,
+    );
+  }
+
+  /// Lấy danh sách tất cả các chương đã lưu của truyện hiện tại
+  Future<List<SavedAudioItem>> getChaptersForCurrentStory() async {
+    final storyTitle = _currentChapter?.storyTitle ?? _lastPlayedStoryTitle ?? '';
+    if (storyTitle.trim().isEmpty) return [];
+
+    final clean = storyTitle.trim().toLowerCase();
+    final list = _savedAudios.where((a) => a.storyTitle.trim().toLowerCase() == clean).toList();
+    list.sort((a, b) => a.chapterNumber.compareTo(b.chapterNumber));
+    return list;
   }
 
   /// Tăng/giảm số chương
@@ -588,6 +897,7 @@ class AppStateProvider extends ChangeNotifier {
     _overallProgress = 0.1;
     notifyListeners();
 
+    _bgCrawlPausedForPriority = true;
     try {
       // 1. Crawl nội dung sạch
       var chapter = await crawlerService.fetchChapter(
@@ -695,6 +1005,8 @@ class AppStateProvider extends ChangeNotifier {
       _currentStatusMessage = 'Lỗi tải chương: $e';
       _headerTitle = 'Lỗi tải Chương $chapterNum';
       notifyListeners();
+    } finally {
+      _bgCrawlPausedForPriority = false;
     }
   }
 
