@@ -937,6 +937,9 @@ class AppStateProvider extends ChangeNotifier {
       for (int i = startIndex; i <= maxIndex; i++) {
         if (sessionId != _generationSessionId || !player.isPlaying || player.isPausedByUser || i >= _summarySentences.length) return;
 
+        final voice = settings.currentVoice;
+        final extension = UnifiedTtsService.getAudioExtension(voice);
+
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: chapter.storyTitle,
           chapterNumber: chapter.chapterNumber,
@@ -944,6 +947,7 @@ class AppStateProvider extends ChangeNotifier {
           sentenceIndex: i,
           sentenceText: _summarySentences[i].text,
           voiceId: settings.selectedVoiceId,
+          extension: extension,
         );
         if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {
           _summarySentences[i] = _summarySentences[i].copyWith(audioPath: expectedPath);
@@ -993,6 +997,9 @@ class AppStateProvider extends ChangeNotifier {
       for (int i = startIndex; i <= maxIndex; i++) {
         if (sessionId != _generationSessionId || !player.isPlaying || player.isPausedByUser || i >= _contentSentences.length) return;
 
+        final voice = settings.currentVoice;
+        final extension = UnifiedTtsService.getAudioExtension(voice);
+
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: chapter.storyTitle,
           chapterNumber: chapter.chapterNumber,
@@ -1000,6 +1007,7 @@ class AppStateProvider extends ChangeNotifier {
           sentenceIndex: i,
           sentenceText: _contentSentences[i].text,
           voiceId: settings.selectedVoiceId,
+          extension: extension,
         );
         if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {
           _contentSentences[i] = _contentSentences[i].copyWith(audioPath: expectedPath);
@@ -1049,6 +1057,9 @@ class AppStateProvider extends ChangeNotifier {
         if (sessionId != _generationSessionId || _currentChapter == null || !player.isPlaying || player.isPausedByUser) return;
         if (i < 0 || i >= list.length) continue;
 
+        final voice = settings.currentVoice;
+        final extension = UnifiedTtsService.getAudioExtension(voice);
+
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: _currentChapter!.storyTitle,
           chapterNumber: _currentChapter!.chapterNumber,
@@ -1056,6 +1067,7 @@ class AppStateProvider extends ChangeNotifier {
           sentenceIndex: i,
           sentenceText: list[i].text,
           voiceId: settings.selectedVoiceId,
+          extension: extension,
         );
 
         if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {
@@ -1813,6 +1825,8 @@ class AppStateProvider extends ChangeNotifier {
     if (player != null && (!player.isPlaying || player.isPausedByUser)) return;
     final chapter = preloaded.chapter;
     final prefetchLimit = settings.audioPrefetchCount;
+    final voice = settings.currentVoice;
+    final extension = UnifiedTtsService.getAudioExtension(voice);
 
     // 1. Tự động sinh audio cho Tóm tắt nếu tab tóm tắt đang chọn và có câu tóm tắt
     if (_activeAudioSource == AudioSourceType.summary && preloaded.summarySentences.isNotEmpty) {
@@ -1827,6 +1841,7 @@ class AppStateProvider extends ChangeNotifier {
           sentenceIndex: i,
           sentenceText: preloaded.summarySentences[i].text,
           voiceId: settings.selectedVoiceId,
+          extension: extension,
         );
 
         if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {
@@ -1863,6 +1878,7 @@ class AppStateProvider extends ChangeNotifier {
           sentenceIndex: i,
           sentenceText: preloaded.contentSentences[i].text,
           voiceId: settings.selectedVoiceId,
+          extension: extension,
         );
 
         if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {

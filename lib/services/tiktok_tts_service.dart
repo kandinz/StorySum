@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
@@ -27,72 +27,23 @@ class TikTokTtsService {
   static const String _token =
       'WTV6R2t6V3ZwNUIwQkFETutGxuveRZ9iTmOBC/a3wzMS7zzza86Ky9nIfYhyeoSiWYP1ZO04X7X1+RThg/zczU6u8ga3dTIJpduvWpCqrmr0Kv7BJf6tcGFgevJ/Jaa1slHj/l4NUJ/eCesl1dYBYQ51oKbuFnZjF7qXVWzsoz326XwRdNEmOufSHnuW+kuy+sS7K/sn3gVWsCC4XFi+FYntDxrVTYS/Pv2LtBgpgULmib5+5kMq2ZuJfCDYvq4NthciciB6KUCf1sOsu7VD/27Tquz8Q58NYALFvX85bjvxQJOz0iV3oUiip0RyqR1ltZPNI/LgN2OGCphyCgOJdlUUdgIbSJpaKL+5PMTM4yBuwCU4QPbYYzTs9x2ZA+7zt41ng+i5+EPtePyDjR4VFTz+7zglLw/E+KqN/nscyqLCyrumn4YgfQ3JYnSnz1WLE6q3aD175yweKBj9f9jyqxnLVmEYy9VjmoxuYNRgVmfT6M17bT9iL0PJTlJ6UqKHuNRT6ubv37ZSr961Gw+RJhyLUDBt8AD1B8YDdF4OImS+LgGjfujaY1agc4tfrnk4V4YcAXyTRlYwLMC9ATDp9CbiBrlMBmYm88gwGaTR9pbI2KcQ4Kg86jZYc6CxNM34sbMG/1LlmqvqLe+E3IG6ebOmyVbL+kYK70c1fT5TcmzVwX5O3JGkHHtFoeCmd4Eyyov6QsO1Jewx0gpjp05dqw==';
 
-  static WebSocket? _sharedSocket;
-  static Future<WebSocket?>? _connectingFuture;
-  static Timer? _idleTimer;
-
   static final Queue<_TikTokTaskJob> _queue = Queue<_TikTokTaskJob>();
   static bool _isProcessingQueue = false;
 
-  /// Đóng kết nối WebSocket khi rảnh quá lâu (20s)
-  static void _closeSocket() {
-    _idleTimer?.cancel();
-    _idleTimer = null;
-    try {
-      _sharedSocket?.close();
-    } catch (_) {}
-    _sharedSocket = null;
-    _connectingFuture = null;
-  }
-
-  static void _scheduleIdleClose() {
-    _idleTimer?.cancel();
-    _idleTimer = Timer(const Duration(seconds: 20), _closeSocket);
-  }
-
-  /// Đảm bảo kết nối WebSocket luôn mở và sẵn sàng
-  static Future<WebSocket?> _ensureSocket() async {
-    if (_sharedSocket != null && _sharedSocket!.readyState == WebSocket.open) {
-      return _sharedSocket;
-    }
-
-    if (_connectingFuture != null) {
-      return _connectingFuture;
-    }
-
-    _connectingFuture = () async {
-      try {
-        final socket = await WebSocket.connect(_wsUrl).timeout(const Duration(seconds: 8));
-        _sharedSocket = socket;
-        _connectingFuture = null;
-        return socket;
-      } catch (_) {
-        _sharedSocket = null;
-        _connectingFuture = null;
-        return null;
-      }
-    }();
-
-    return _connectingFuture;
-  }
-
-  /// Xử lý gửi 1 task trên WebSocket
+  /// Xử lý gửi 1 task trên WebSocket riêng biệt, tránh xung đột Stream subscription
   static Future<Uint8List?> _synthesizeRaw(String text, String speaker) async {
-    final socket = await _ensureSocket();
-    if (socket == null || socket.readyState != WebSocket.open) {
-      return null;
-    }
-    _idleTimer?.cancel();
-
-    final chunks = <List<int>>[];
-    final completer = Completer<Uint8List?>();
+    WebSocket? socket;
     StreamSubscription? sub;
     Timer? timeoutTimer;
+    final chunks = <List<int>>[];
+    final completer = Completer<Uint8List?>();
 
     void cleanup() {
       timeoutTimer?.cancel();
       sub?.cancel();
-      _scheduleIdleClose();
+      try {
+        socket?.close();
+      } catch (_) {}
     }
 
     timeoutTimer = Timer(const Duration(seconds: 15), () {
@@ -102,41 +53,41 @@ class TikTokTtsService {
       }
     });
 
-    sub = socket.listen((event) {
-      if (event is List<int>) {
-        chunks.add(event);
-      } else if (event is String) {
-        try {
-          final msg = jsonDecode(event);
-          final eventType = msg['event'];
-
-          if (eventType == 'TaskFailed') {
-            cleanup();
-            if (!completer.isCompleted) completer.complete(null);
-          } else if (eventType == 'TaskEnd' || eventType == 'TaskFinished') {
-            final totalLength = chunks.fold<int>(0, (acc, c) => acc + c.length);
-            final combined = Uint8List(totalLength);
-            int offset = 0;
-            for (final c in chunks) {
-              combined.setRange(offset, offset + c.length, c);
-              offset += c.length;
-            }
-            cleanup();
-            if (!completer.isCompleted) completer.complete(combined);
-          }
-        } catch (_) {}
-      }
-    }, onError: (err) {
-      cleanup();
-      _closeSocket();
-      if (!completer.isCompleted) completer.complete(null);
-    }, onDone: () {
-      cleanup();
-      _closeSocket();
-      if (!completer.isCompleted) completer.complete(null);
-    });
-
     try {
+      socket = await WebSocket.connect(_wsUrl).timeout(const Duration(seconds: 8));
+
+      sub = socket.listen((event) {
+        if (event is List<int>) {
+          chunks.add(event);
+        } else if (event is String) {
+          try {
+            final msg = jsonDecode(event);
+            final eventType = msg['event'];
+
+            if (eventType == 'TaskFailed') {
+              cleanup();
+              if (!completer.isCompleted) completer.complete(null);
+            } else if (eventType == 'TaskEnd' || eventType == 'TaskFinished') {
+              final totalLength = chunks.fold<int>(0, (acc, c) => acc + c.length);
+              final combined = Uint8List(totalLength);
+              int offset = 0;
+              for (final c in chunks) {
+                combined.setRange(offset, offset + c.length, c);
+                offset += c.length;
+              }
+              cleanup();
+              if (!completer.isCompleted) completer.complete(combined);
+            }
+          } catch (_) {}
+        }
+      }, onError: (err) {
+        cleanup();
+        if (!completer.isCompleted) completer.complete(null);
+      }, onDone: () {
+        cleanup();
+        if (!completer.isCompleted) completer.complete(null);
+      });
+
       final payload = jsonEncode({
         'audio_config': {
           'bit_rate': 128000,
@@ -163,7 +114,7 @@ class TikTokTtsService {
     return completer.future;
   }
 
-  /// Chạy hàng đợi tuần tự để bảo vệ token phiên TikTok
+  /// Chạy hàng đợi tuần tự để gửi task an toàn và ổn định
   static void _processQueue() async {
     if (_isProcessingQueue || _queue.isEmpty) return;
     _isProcessingQueue = true;
@@ -171,7 +122,12 @@ class TikTokTtsService {
     while (_queue.isNotEmpty) {
       final job = _queue.removeFirst();
       try {
-        final result = await _synthesizeRaw(job.text, job.speaker);
+        var result = await _synthesizeRaw(job.text, job.speaker);
+        // Thử lại 1 lần nếu gặp sự cố mạng chớp nhoáng
+        if (result == null || result.isEmpty) {
+          await Future.delayed(const Duration(milliseconds: 200));
+          result = await _synthesizeRaw(job.text, job.speaker);
+        }
         if (!job.completer.isCompleted) {
           job.completer.complete(result);
         }
@@ -180,6 +136,8 @@ class TikTokTtsService {
           job.completer.complete(null);
         }
       }
+      // Nghỉ nhẹ 30ms giữa các task tuần tự
+      await Future.delayed(const Duration(milliseconds: 30));
     }
 
     _isProcessingQueue = false;
