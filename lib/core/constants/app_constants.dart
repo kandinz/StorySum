@@ -1,6 +1,6 @@
 class AppConstants {
   static const String appName = 'StorySum';
-  static const String appVersion = '1.0.42';
+  static const String appVersion = '1.0.43';
 
   // Default Story Link & Chapter
   static const String defaultStoryUrl = 'https://xtruyen.vn/truyen/pham-nhan-tu-tien/chuong-1/';
@@ -12,9 +12,9 @@ class AppConstants {
   static const String defaultTranslatePrompt = 
       'Hãy dịch toàn bộ nội dung chương truyện sau sang tiếng Việt một cách mượt mà, tự nhiên, văn phong truyện dịch chuẩn, giữ nguyên tên riêng, địa danh và các đại từ xưng hô phù hợp ngữ cảnh. Không thêm hoặc bớt nội dung ngoài chương truyện.';
   
-  // Voices (Mặc định chọn Ngọc Huyền ONNX Offline)
-  static const String defaultVoiceId = 'onnx-ngoc-huyen';
-  static const String defaultVoiceName = 'Ngọc Huyền';
+  // Voices (Mặc định chọn Giọng nữ phổ thông TikTok vi_female_huong)
+  static const String defaultVoiceId = 'tiktok-vi_female_huong';
+  static const String defaultVoiceName = 'Giọng nữ phổ thông';
 
   // Database Tables
   static const String tableChapters = 'chapters';
@@ -38,6 +38,14 @@ class AppConstants {
   static const int defaultAudioPrefetchCount = 5;
   static const String keySleepTimerMinutes = 'sleep_timer_minutes';
   static const int defaultSleepTimerMinutes = 30;
+
+  // Storage Keys - Background Music (BGM)
+  static const String keyBgmEnabled = 'bgm_enabled';
+  static const String keyBgmVolume = 'bgm_volume';
+  static const String keySelectedBgmTrack = 'selected_bgm_track_id';
+  static const String keyCustomBgmTracks = 'custom_bgm_tracks_json';
+  static const double defaultBgmVolume = 0.2; // 20%
+  static const String defaultBgmTrackId = 'bgm1';
 
   // Storage Keys - AI & Translation Prompts
   static const String keySystemPrompt = 'summary_system_prompt';

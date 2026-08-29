@@ -12,6 +12,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/voice_model.dart';
 import '../../models/ai_provider_model.dart';
+import '../../models/bgm_track_model.dart';
 import '../../providers/app_state_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/player_state_provider.dart';
@@ -39,6 +40,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
   late TextEditingController _translatePromptController;
   String? _toastMessage;
   Timer? _toastTimer;
+  bool _isPreviewingBgm = false;
 
   void _showModalToast(String message) {
     _toastTimer?.cancel();
@@ -439,7 +441,132 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
         ),
         const SizedBox(height: 12),
 
-        // 3. Tự động chuyển chương, Hẹn giờ dừng phát & Số câu tải trước audio
+        // 3. Nhạc nền (BGM)
+        _buildFieldLabel(
+          icon: Icons.music_note_rounded,
+          title: 'Nhạc Nền (BGM)',
+          trailing: _buildActionButton(
+            label: 'Thêm nhạc file máy',
+            icon: Icons.add_rounded,
+            onTap: () => _handleImportBgm(context, settings, player, colors),
+            colors: colors,
+          ),
+          colors: colors,
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: colors.cardBackground,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: colors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: _buildCheckboxOption(
+                      title: 'Bật nhạc nền khi nghe truyện',
+                      value: settings.bgmEnabled,
+                      colors: colors,
+                      onChanged: (val) async {
+                        final enabled = val ?? false;
+                        await settings.setBgmEnabled(enabled);
+                        await player.setBgmEnabled(enabled);
+                        await player.setBgmTrack(settings.currentBgmTrack.url, isLocal: settings.currentBgmTrack.isLocal);
+                      },
+                    ),
+                  ),
+                  _buildActionButton(
+                    label: _isPreviewingBgm ? 'Dừng thử' : 'Nghe thử',
+                    icon: _isPreviewingBgm ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                    onTap: () async {
+                      if (_isPreviewingBgm) {
+                        await player.stopBgmPreview();
+                        if (mounted) setState(() => _isPreviewingBgm = false);
+                      } else {
+                        await player.playBgmPreview(settings.currentBgmTrack.url, isLocal: settings.currentBgmTrack.isLocal);
+                        if (mounted) setState(() => _isPreviewingBgm = true);
+                      }
+                    },
+                    colors: colors,
+                  ),
+                ],
+              ),
+              Divider(color: colors.border, height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Bài nhạc:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildBgmDropdown(context, settings, player, colors),
+                  ),
+                ],
+              ),
+              Divider(color: colors.border, height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Âm lượng nhạc nền',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${(settings.bgmVolume * 100).round()}%',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.primary),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                ),
+                child: Slider(
+                  value: settings.bgmVolume,
+                  min: 0.0,
+                  max: 1.0,
+                  divisions: 20,
+                  label: '${(settings.bgmVolume * 100).round()}%',
+                  activeColor: colors.primary,
+                  inactiveColor: colors.elevatedBackground,
+                  onChanged: (val) {
+                    final rounded = (val * 100).round() / 100;
+                    settings.setBgmVolume(rounded);
+                    player.setBgmVolume(rounded);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // 4. Tự động chuyển chương, Hẹn giờ dừng phát & Số câu tải trước audio
         _buildSectionHeader(
           icon: Icons.playlist_play_rounded,
           title: 'Tự Động & Hẹn Giờ',
@@ -1185,6 +1312,9 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
   }
 
   Widget _buildVoiceDropdown(BuildContext context, SettingsProvider settings, AppThemeColors colors) {
+    final currentVoice = settings.currentVoice;
+    final currentEngineName = currentVoice.engineDisplayName;
+
     return PopupMenuButton<String>(
       onSelected: (val) async {
         await settings.setSelectedVoice(val);
@@ -1206,9 +1336,23 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
           final isCustom = !VoiceModel.defaultVoices.any((dv) => dv.id == voice.id);
           final displayName = voice.name.replaceAll('(ONNX)', '').replaceAll('.onnx', '').trim();
 
+          Color badgeColor;
+          String engineBadgeText = voice.engineDisplayName;
+          switch (voice.engine) {
+            case VoiceEngineType.localOnnx:
+              badgeColor = const Color(0xFF10B981); // Emerald
+              break;
+            case VoiceEngineType.edgeTts:
+              badgeColor = const Color(0xFF6366F1); // Indigo
+              break;
+            case VoiceEngineType.tiktokTts:
+              badgeColor = const Color(0xFFEC4899); // Pink
+              break;
+          }
+
           return PopupMenuItem<String>(
             value: voice.id,
-            height: 38,
+            height: 40,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               decoration: BoxDecoration(
@@ -1230,17 +1374,23 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
-                        if (isCustom) ...[
-                          const SizedBox(width: 5),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: colors.accent.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text('Tùy biến', style: TextStyle(fontSize: 9, color: colors.accent)),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: badgeColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: badgeColor.withValues(alpha: 0.4), width: 0.8),
                           ),
-                        ],
+                          child: Text(
+                            isCustom ? 'ONNX Tùy biến' : engineBadgeText,
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.bold,
+                              color: badgeColor,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1270,11 +1420,29 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(
-              child: Text(
-                settings.currentVoice.name.replaceAll('(ONNX)', '').replaceAll('.onnx', '').trim(),
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colors.textPrimary),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      currentVoice.name.replaceAll('(ONNX)', '').replaceAll('.onnx', '').trim(),
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colors.textPrimary),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      currentEngineName,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: colors.primary),
+                    ),
+                  ),
+                ],
               ),
             ),
             Icon(Icons.keyboard_arrow_down_rounded, color: colors.textMuted, size: 18),
@@ -1282,6 +1450,170 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
         ),
       ),
     );
+  }
+
+  Widget _buildBgmDropdown(BuildContext context, SettingsProvider settings, PlayerStateProvider player, AppThemeColors colors) {
+    final currentTrack = settings.currentBgmTrack;
+
+    return PopupMenuButton<String>(
+      onSelected: (val) async {
+        await settings.setSelectedBgmTrack(val);
+        final track = settings.currentBgmTrack;
+        await player.setBgmTrack(track.url, isLocal: track.isLocal);
+        if (_isPreviewingBgm) {
+          await player.playBgmPreview(track.url, isLocal: track.isLocal);
+        }
+      },
+      color: colors.elevatedBackground,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colors.border),
+      ),
+      offset: const Offset(0, 44),
+      itemBuilder: (ctx) {
+        return settings.availableBgmTracks.map((track) {
+          final isSelected = track.id == settings.selectedBgmTrackId;
+          final isCustom = track.isLocal;
+
+          return PopupMenuItem<String>(
+            value: track.id,
+            height: 38,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: isSelected ? colors.primary.withValues(alpha: 0.2) : Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Icon(
+                          isCustom ? Icons.folder_rounded : Icons.music_note_rounded,
+                          size: 14,
+                          color: isSelected ? colors.primary : colors.textSecondary,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            track.name,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              color: isSelected ? colors.primary : colors.textPrimary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isCustom) ...[
+                          const SizedBox(width: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: colors.accent.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text('File máy', style: TextStyle(fontSize: 9, color: colors.accent)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (isCustom && !isSelected)
+                    InkWell(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        settings.deleteCustomBgmTrack(track.id);
+                      },
+                      child: Icon(Icons.close_rounded, size: 14, color: colors.textMuted),
+                    ),
+                ],
+              ),
+            ),
+          );
+        }).toList();
+      },
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: colors.elevatedBackground,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: colors.border),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  Icon(
+                    currentTrack.isLocal ? Icons.folder_rounded : Icons.music_note_rounded,
+                    size: 15,
+                    color: colors.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      currentTrack.name,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colors.textPrimary),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.keyboard_arrow_down_rounded, color: colors.textMuted, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleImportBgm(
+    BuildContext context,
+    SettingsProvider settings,
+    PlayerStateProvider player,
+    AppThemeColors colors,
+  ) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['mp3', 'wav', 'aac', 'm4a', 'flac', 'ogg'],
+        dialogTitle: 'Chọn file nhạc nền từ máy',
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final sourcePath = result.files.single.path!;
+        final sourceFile = File(sourcePath);
+        final fileName = p.basenameWithoutExtension(sourcePath);
+
+        final appDir = await getApplicationDocumentsDirectory();
+        final bgmDir = Directory(p.join(appDir.path, 'bgm_tracks'));
+        if (!await bgmDir.exists()) {
+          await bgmDir.create(recursive: true);
+        }
+
+        final targetPath = p.join(bgmDir.path, '${DateTime.now().millisecondsSinceEpoch}_${p.basename(sourcePath)}');
+        await sourceFile.copy(targetPath);
+
+        final newTrack = BgmTrack(
+          id: 'local_bgm_${DateTime.now().millisecondsSinceEpoch}',
+          name: fileName,
+          url: targetPath,
+          isLocal: true,
+        );
+
+        await settings.addCustomBgmTrack(newTrack);
+        await player.setBgmTrack(newTrack.url, isLocal: true);
+        _showModalToast('Đã thêm nhạc nền "$fileName" thành công!');
+      }
+    } catch (e) {
+      _showModalToast('Lỗi chọn file nhạc: $e');
+    }
   }
 
   Widget _buildFontDropdown(BuildContext context, SettingsProvider settings, AppThemeColors colors) {

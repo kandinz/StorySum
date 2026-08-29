@@ -189,6 +189,37 @@ class PlayerStateProvider extends ChangeNotifier {
   }
 
   // ==========================================
+  // BACKGROUND MUSIC (BGM) LOGIC
+  // ==========================================
+  bool get bgmEnabled => playerService.bgmEnabled;
+  double get bgmVolume => playerService.bgmVolume;
+
+  Future<void> setBgmEnabled(bool enabled) async {
+    await playerService.setBgmEnabled(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setBgmVolume(double volume) async {
+    await playerService.setBgmVolume(volume);
+    notifyListeners();
+  }
+
+  Future<void> setBgmTrack(String url, {bool isLocal = false}) async {
+    await playerService.setBgmTrack(url, isLocal: isLocal);
+    notifyListeners();
+  }
+
+  Future<void> playBgmPreview(String url, {bool isLocal = false}) async {
+    await playerService.playBgmPreview(url, isLocal: isLocal);
+    notifyListeners();
+  }
+
+  Future<void> stopBgmPreview() async {
+    await playerService.stopBgmPreview();
+    notifyListeners();
+  }
+
+  // ==========================================
   // SLEEP TIMER LOGIC
   // ==========================================
   void setSleepTimerMinutes(int minutes) {

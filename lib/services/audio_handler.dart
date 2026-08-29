@@ -18,17 +18,35 @@ Future<AudioHandler> initAudioService() async {
 
 class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _bgmPlayer = AudioPlayer();
+
+  bool _bgmEnabled = false;
+  double _bgmVolume = 0.2;
+  String? _currentBgmUrl;
+  bool _isBgmLocal = false;
 
   MyAudioHandler() {
     _init();
   }
 
   AudioPlayer get player => _player;
+  AudioPlayer get bgmPlayer => _bgmPlayer;
+  bool get bgmEnabled => _bgmEnabled;
+  double get bgmVolume => _bgmVolume;
+  String? get currentBgmUrl => _currentBgmUrl;
 
   void _init() {
+    // Cài đặt lặp lại vô hạn cho Nhạc nền
+    _bgmPlayer.setLoopMode(LoopMode.all);
+    _bgmPlayer.setVolume(_bgmVolume);
+
     // Chuyển đổi sự kiện player sang AudioService playback state
     _player.playbackEventStream.listen((PlaybackEvent event) {
       final playing = _player.playing;
+
+      // Đồng bộ trạng thái phát nhạc nền cùng với giọng đọc
+      _syncBgmWithVoice(playing);
+
       playbackState.add(playbackState.value.copyWith(
         controls: [
           MediaControl.rewind,
@@ -58,14 +76,101 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     });
   }
 
-  @override
-  Future<void> play() => _player.play();
+  void _syncBgmWithVoice(bool isVoicePlaying) {
+    if (_bgmEnabled && _currentBgmUrl != null && _currentBgmUrl!.isNotEmpty) {
+      if (isVoicePlaying) {
+        if (!_bgmPlayer.playing) {
+          _bgmPlayer.play().catchError((_) {});
+        }
+      } else {
+        if (_bgmPlayer.playing) {
+          _bgmPlayer.pause().catchError((_) {});
+        }
+      }
+    } else {
+      if (_bgmPlayer.playing) {
+        _bgmPlayer.pause().catchError((_) {});
+      }
+    }
+  }
+
+  Future<void> setBgmEnabled(bool enabled) async {
+    _bgmEnabled = enabled;
+    _syncBgmWithVoice(_player.playing);
+  }
+
+  Future<void> setBgmVolume(double volume) async {
+    _bgmVolume = volume.clamp(0.0, 1.0);
+    await _bgmPlayer.setVolume(_bgmVolume);
+  }
+
+  Future<void> setBgmTrack(String url, {bool isLocal = false}) async {
+    if (_currentBgmUrl == url && _isBgmLocal == isLocal) return;
+
+    _currentBgmUrl = url;
+    _isBgmLocal = isLocal;
+
+    final wasPlaying = _bgmPlayer.playing;
+    try {
+      if (isLocal) {
+        await _bgmPlayer.setFilePath(url);
+      } else {
+        await _bgmPlayer.setUrl(url);
+      }
+      await _bgmPlayer.setLoopMode(LoopMode.all);
+      await _bgmPlayer.setVolume(_bgmVolume);
+
+      if (wasPlaying || (_bgmEnabled && _player.playing)) {
+        await _bgmPlayer.play();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> playBgmPreview(String url, {bool isLocal = false}) async {
+    try {
+      if (isLocal) {
+        await _bgmPlayer.setFilePath(url);
+      } else {
+        await _bgmPlayer.setUrl(url);
+      }
+      await _bgmPlayer.setLoopMode(LoopMode.all);
+      await _bgmPlayer.setVolume(_bgmVolume);
+      await _bgmPlayer.play();
+    } catch (_) {}
+  }
+
+  Future<void> stopBgmPreview() async {
+    try {
+      await _bgmPlayer.pause();
+      if (_currentBgmUrl != null && _currentBgmUrl!.isNotEmpty) {
+        if (_isBgmLocal) {
+          await _bgmPlayer.setFilePath(_currentBgmUrl!);
+        } else {
+          await _bgmPlayer.setUrl(_currentBgmUrl!);
+        }
+        await _bgmPlayer.setLoopMode(LoopMode.all);
+        await _bgmPlayer.setVolume(_bgmVolume);
+      }
+    } catch (_) {}
+  }
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> play() async {
+    await _player.play();
+    _syncBgmWithVoice(true);
+  }
 
   @override
-  Future<void> stop() => _player.stop();
+  Future<void> pause() async {
+    await _player.pause();
+    _syncBgmWithVoice(false);
+  }
+
+  @override
+  Future<void> stop() async {
+    await _player.stop();
+    _syncBgmWithVoice(false);
+  }
 
   @override
   Future<void> seek(Duration position) => _player.seek(position);
@@ -99,5 +204,6 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
     await _player.setFilePath(filePath);
     await _player.play();
+    _syncBgmWithVoice(true);
   }
 }

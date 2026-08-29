@@ -39,6 +39,14 @@ void main() async {
   // Khởi tạo PlayerState Provider
   final playerStateProvider = PlayerStateProvider(playerService: audioPlayerService);
 
+  // Đồng bộ cấu hình BGM khi khởi động
+  await audioPlayerService.setBgmEnabled(settingsProvider.bgmEnabled);
+  await audioPlayerService.setBgmVolume(settingsProvider.bgmVolume);
+  await audioPlayerService.setBgmTrack(
+    settingsProvider.currentBgmTrack.url,
+    isLocal: settingsProvider.currentBgmTrack.isLocal,
+  );
+
   // Lắng nghe sự kiện kết thúc phát câu ở cấp Provider toàn cục (đảm bảo hoạt động ngầm liên tục khi khóa màn hình)
   playerStateProvider.onPlaybackComplete.listen((_) {
     appStateProvider.handleSentenceComplete(

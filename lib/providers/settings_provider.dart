@@ -6,6 +6,7 @@ import '../core/constants/app_constants.dart';
 import '../core/theme/app_theme.dart';
 import '../models/voice_model.dart';
 import '../models/ai_provider_model.dart';
+import '../models/bgm_track_model.dart';
 
 class SettingsProvider extends ChangeNotifier {
   late SharedPreferences _prefs;
@@ -22,6 +23,12 @@ class SettingsProvider extends ChangeNotifier {
   bool _autoNextChapter = false; // Mặc định false, tự chuyển chương khi phát hết
   bool _translateContent = false; // Mặc định false, không dịch nội dung
   int _audioPrefetchCount = AppConstants.defaultAudioPrefetchCount; // Mặc định 5 câu tải sẵn
+
+  // Background Music (BGM) Configuration
+  bool _bgmEnabled = false;
+  double _bgmVolume = AppConstants.defaultBgmVolume;
+  String _selectedBgmTrackId = AppConstants.defaultBgmTrackId;
+  List<BgmTrack> _availableBgmTracks = BgmTrack.defaultTracks;
 
   // AI Configuration (Multi-Provider: Gemini, ChatGPT, Claude, DeepSeek, MiMo, OpenRouter, Groq, Custom)
   List<AiProviderModel> _providers = AiProviderModel.defaultBuiltinProviders;
@@ -61,6 +68,19 @@ class SettingsProvider extends ChangeNotifier {
   int get audioPrefetchCount => _audioPrefetchCount;
   List<VoiceModel> get availableVoices => _availableVoices;
 
+  // BGM Getters
+  bool get bgmEnabled => _bgmEnabled;
+  double get bgmVolume => _bgmVolume;
+  String get selectedBgmTrackId => _selectedBgmTrackId;
+  List<BgmTrack> get availableBgmTracks => _availableBgmTracks;
+
+  BgmTrack get currentBgmTrack {
+    return _availableBgmTracks.firstWhere(
+      (t) => t.id == _selectedBgmTrackId,
+      orElse: () => _availableBgmTracks.isNotEmpty ? _availableBgmTracks.first : BgmTrack.defaultTracks.first,
+    );
+  }
+
   // AI & Providers Getters
   List<AiProviderModel> get providers => _providers;
   String get activeProviderId => _activeProviderId;
@@ -91,7 +111,7 @@ class SettingsProvider extends ChangeNotifier {
     return _availableVoices.firstWhere(
       (v) => v.id == _selectedVoiceId,
       orElse: () => _availableVoices.firstWhere(
-        (v) => v.id == 'onnx-ngoc-huyen',
+        (v) => v.id == AppConstants.defaultVoiceId,
         orElse: () => _availableVoices.first,
       ),
     );
@@ -116,6 +136,30 @@ class SettingsProvider extends ChangeNotifier {
     _autoNextChapter = _prefs.getBool(AppConstants.keyAutoNextChapter) ?? false;
     _translateContent = _prefs.getBool(AppConstants.keyTranslateContent) ?? false;
     _audioPrefetchCount = _prefs.getInt(AppConstants.keyAudioPrefetchCount) ?? AppConstants.defaultAudioPrefetchCount;
+
+    // Load Background Music (BGM) settings
+    _bgmEnabled = _prefs.getBool(AppConstants.keyBgmEnabled) ?? false;
+    _bgmVolume = _prefs.getDouble(AppConstants.keyBgmVolume) ?? AppConstants.defaultBgmVolume;
+    _selectedBgmTrackId = _prefs.getString(AppConstants.keySelectedBgmTrack) ?? AppConstants.defaultBgmTrackId;
+
+    final customBgmJson = _prefs.getStringList(AppConstants.keyCustomBgmTracks) ?? [];
+    final List<BgmTrack> loadedCustomTracks = [];
+    for (final str in customBgmJson) {
+      try {
+        final map = jsonDecode(str);
+        if (map is Map<String, dynamic>) {
+          final t = BgmTrack.fromMap(map);
+          if (!t.isLocal || File(t.url).existsSync()) {
+            loadedCustomTracks.add(t);
+          }
+        }
+      } catch (_) {}
+    }
+
+    _availableBgmTracks = [
+      ...BgmTrack.defaultTracks,
+      ...loadedCustomTracks,
+    ];
 
     // 1. Tải danh sách AI Providers từ SharedPreferences
     final providersJson = _prefs.getStringList(AppConstants.keyAiProvidersJson) ?? [];
@@ -563,5 +607,65 @@ class SettingsProvider extends ChangeNotifier {
     );
     final list = customVoices.map((v) => jsonEncode(v.toMap())).toList();
     await _prefs.setStringList('custom_onnx_voices', list);
+  }
+
+  // ===========================================================================
+  // BACKGROUND MUSIC (BGM) METHODS
+  // ===========================================================================
+  Future<void> setBgmEnabled(bool val) async {
+    _bgmEnabled = val;
+    await _prefs.setBool(AppConstants.keyBgmEnabled, _bgmEnabled);
+    notifyListeners();
+  }
+
+  Future<void> setBgmVolume(double val) async {
+    _bgmVolume = val.clamp(0.0, 1.0);
+    await _prefs.setDouble(AppConstants.keyBgmVolume, _bgmVolume);
+    notifyListeners();
+  }
+
+  Future<void> setSelectedBgmTrack(String trackId) async {
+    _selectedBgmTrackId = trackId;
+    await _prefs.setString(AppConstants.keySelectedBgmTrack, _selectedBgmTrackId);
+    notifyListeners();
+  }
+
+  Future<void> addCustomBgmTrack(BgmTrack track) async {
+    _availableBgmTracks.removeWhere((t) => t.id == track.id);
+    _availableBgmTracks = [..._availableBgmTracks, track];
+    _selectedBgmTrackId = track.id;
+    await _prefs.setString(AppConstants.keySelectedBgmTrack, _selectedBgmTrackId);
+    await _saveCustomBgmTracks();
+    notifyListeners();
+  }
+
+  Future<void> deleteCustomBgmTrack(String trackId) async {
+    final index = _availableBgmTracks.indexWhere((t) => t.id == trackId);
+    if (index != -1) {
+      final track = _availableBgmTracks[index];
+      if (track.isLocal) {
+        final f = File(track.url);
+        if (await f.exists()) {
+          try {
+            await f.delete();
+          } catch (_) {}
+        }
+      }
+      _availableBgmTracks.removeAt(index);
+      if (_selectedBgmTrackId == trackId) {
+        _selectedBgmTrackId = AppConstants.defaultBgmTrackId;
+        await _prefs.setString(AppConstants.keySelectedBgmTrack, _selectedBgmTrackId);
+      }
+      await _saveCustomBgmTracks();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _saveCustomBgmTracks() async {
+    final customTracks = _availableBgmTracks.where(
+      (t) => !BgmTrack.defaultTracks.any((dt) => dt.id == t.id),
+    );
+    final list = customTracks.map((t) => jsonEncode(t.toMap())).toList();
+    await _prefs.setStringList(AppConstants.keyCustomBgmTracks, list);
   }
 }

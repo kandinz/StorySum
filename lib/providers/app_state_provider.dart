@@ -9,6 +9,8 @@ import '../models/sentence_item.dart';
 import '../services/crawler_service.dart';
 import '../services/summary_service.dart';
 import '../services/onnx_tts_service.dart';
+import '../services/unified_tts_service.dart';
+import '../models/voice_model.dart';
 import '../core/database/database_helper.dart';
 import '../core/constants/app_constants.dart';
 import '../core/utils/audio_exporter.dart';
@@ -33,7 +35,8 @@ class PreloadedChapter {
 class AppStateProvider extends ChangeNotifier {
   final CrawlerService crawlerService = CrawlerService();
   final SummaryService summaryService = SummaryService();
-  final OnnxTtsService onnxTtsService = OnnxTtsService();
+  final UnifiedTtsService unifiedTtsService = UnifiedTtsService();
+  OnnxTtsService get onnxTtsService => unifiedTtsService.onnxTtsService;
   final DatabaseHelper db = DatabaseHelper.instance;
 
   // Controllers
@@ -237,8 +240,13 @@ class AppStateProvider extends ChangeNotifier {
     required int chapterNumber,
     required String type,
     String? voiceId,
+    VoiceModel? voice,
   }) async {
     if (sentences.isEmpty) return sentences;
+    final extension = voice != null
+        ? UnifiedTtsService.getAudioExtension(voice)
+        : (voiceId != null && voiceId.startsWith('onnx') ? 'wav' : 'mp3');
+
     final List<SentenceItem> result = [];
     for (final s in sentences) {
       if (s.hasAudio) {
@@ -253,6 +261,7 @@ class AppStateProvider extends ChangeNotifier {
           sentenceIndex: s.index,
           sentenceText: s.text,
           voiceId: voiceId,
+          extension: extension,
         );
         final file = File(expectedPath);
         if (await file.exists() && await file.length() > 500) {
@@ -842,6 +851,9 @@ class AppStateProvider extends ChangeNotifier {
     required String audioType,
   }) async {
     try {
+      final voice = settings.currentVoice;
+      final extension = UnifiedTtsService.getAudioExtension(voice);
+
       final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
         storyTitle: chapter.storyTitle,
         chapterNumber: chapter.chapterNumber,
@@ -849,6 +861,7 @@ class AppStateProvider extends ChangeNotifier {
         sentenceIndex: sentence.index,
         sentenceText: sentence.text,
         voiceId: settings.selectedVoiceId,
+        extension: extension,
       );
 
       final file = File(expectedPath);
@@ -861,9 +874,9 @@ class AppStateProvider extends ChangeNotifier {
         return null;
       }
 
-      final result = await onnxTtsService.synthesizeOffline(
+      final result = await unifiedTtsService.synthesize(
         text: cleanText,
-        voice: settings.currentVoice,
+        voice: voice,
         outputFilePath: expectedPath,
         storyTitle: chapter.storyTitle,
         chapterNumber: chapter.chapterNumber,

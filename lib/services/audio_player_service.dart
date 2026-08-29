@@ -11,12 +11,22 @@ class AudioPlayerService {
   AudioPlayerService({required this.audioHandler});
 
   AudioPlayer get player => audioHandler.player;
+  AudioPlayer get bgmPlayer => audioHandler.bgmPlayer;
   List<WordBoundary> get currentWordBoundaries => _currentWordBoundaries;
   int get currentWordIndex => _currentWordIndex;
 
   Stream<Duration> get positionStream => player.positionStream;
   Stream<Duration?> get durationStream => player.durationStream;
   Stream<PlayerState> get playerStateStream => player.playerStateStream;
+
+  // BGM Getters & Methods
+  bool get bgmEnabled => audioHandler.bgmEnabled;
+  double get bgmVolume => audioHandler.bgmVolume;
+  Future<void> setBgmEnabled(bool enabled) => audioHandler.setBgmEnabled(enabled);
+  Future<void> setBgmVolume(double volume) => audioHandler.setBgmVolume(volume);
+  Future<void> setBgmTrack(String url, {bool isLocal = false}) => audioHandler.setBgmTrack(url, isLocal: isLocal);
+  Future<void> playBgmPreview(String url, {bool isLocal = false}) => audioHandler.playBgmPreview(url, isLocal: isLocal);
+  Future<void> stopBgmPreview() => audioHandler.stopBgmPreview();
 
   void setWordBoundaries(List<WordBoundary> boundaries) {
     _currentWordBoundaries = boundaries;
