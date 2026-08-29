@@ -97,7 +97,7 @@ def step1_build_apk(cwd, tag):
     raw_arm64_apk = os.path.join(apk_dir, "app-arm64-v8a-release.apk")
     
     version_tag = tag if tag.startswith("v") else f"v{tag}"
-    target_name = f"app-arm64-v8a-release-{version_tag}.apk"
+    target_name = f"StorySum-{version_tag}.apk"
     target_apk = os.path.join(apk_dir, target_name)
     
     if os.path.exists(raw_arm64_apk):
@@ -113,20 +113,20 @@ def step1_build_apk(cwd, tag):
             os.rename(raw_sha1, target_sha1)
             
         size_mb = os.path.getsize(target_apk) / (1024 * 1024)
-        print(f"[SUCCESS] ARM64 APK (renamed with version): {target_apk} ({size_mb:.2f} MB)")
+        print(f"[SUCCESS] ARM64 APK (renamed to app & version): {target_apk} ({size_mb:.2f} MB)")
         built_apks.append(target_apk)
     elif os.path.exists(target_apk):
         size_mb = os.path.getsize(target_apk) / (1024 * 1024)
-        print(f"[SUCCESS] ARM64 APK already exists with version: {target_apk} ({size_mb:.2f} MB)")
+        print(f"[SUCCESS] APK already exists with target name: {target_apk} ({size_mb:.2f} MB)")
         built_apks.append(target_apk)
 
     if not built_apks:
         for f in os.listdir(apk_dir) if os.path.exists(apk_dir) else []:
-            if f.endswith(".apk") and (version_tag in f or "arm64" in f or "release" in f):
+            if f.endswith(".apk") and (version_tag in f or "StorySum" in f or "arm64" in f or "release" in f):
                 built_apks.append(os.path.join(apk_dir, f))
 
     if not built_apks:
-        raise FileNotFoundError(f"Cannot find built ARM64 APK in {apk_dir}")
+        raise FileNotFoundError(f"Cannot find built APK in {apk_dir}")
         
     return built_apks
 
@@ -298,33 +298,41 @@ def main():
     else:
         apk_dir = os.path.join(cwd, "build", "app", "outputs", "flutter-apk")
         version_tag = tag if tag.startswith("v") else f"v{tag}"
-        target_name = f"app-arm64-v8a-release-{version_tag}.apk"
+        target_name = f"StorySum-{version_tag}.apk"
         target_apk = os.path.join(apk_dir, target_name)
         raw_arm64_apk = os.path.join(apk_dir, "app-arm64-v8a-release.apk")
         
         if os.path.exists(target_apk):
             apk_paths.append(target_apk)
-        elif os.path.exists(raw_arm64_apk):
-            print(f"[INFO] Renaming existing {raw_arm64_apk} to {target_apk}...")
-            os.rename(raw_arm64_apk, target_apk)
-            raw_sha1 = raw_arm64_apk + ".sha1"
-            if os.path.exists(raw_sha1):
-                os.rename(raw_sha1, target_apk + ".sha1")
-            apk_paths.append(target_apk)
         else:
-            for f in os.listdir(apk_dir) if os.path.exists(apk_dir) else []:
-                if f.endswith(".apk") and (version_tag in f or "arm64" in f or "release" in f):
-                    apk_paths.append(os.path.join(apk_dir, f))
+            candidates = [
+                raw_arm64_apk,
+                os.path.join(apk_dir, f"app-arm64-v8a-release-{version_tag}.apk")
+            ]
+            found = False
+            for cand in candidates:
+                if os.path.exists(cand):
+                    print(f"[INFO] Renaming existing {cand} to {target_apk}...")
+                    os.rename(cand, target_apk)
+                    if os.path.exists(cand + ".sha1"):
+                        os.rename(cand + ".sha1", target_apk + ".sha1")
+                    apk_paths.append(target_apk)
+                    found = True
+                    break
+            if not found:
+                for f in os.listdir(apk_dir) if os.path.exists(apk_dir) else []:
+                    if f.endswith(".apk") and (version_tag in f or "StorySum" in f or "arm64" in f or "release" in f):
+                        apk_paths.append(os.path.join(apk_dir, f))
         print(f"[INFO] Skipping build. Found existing APKs: {apk_paths}")
         
     if not args.skip_release:
-        apk_name = os.path.basename(apk_paths[0]) if apk_paths else f"app-arm64-v8a-release-{tag}.apk"
+        apk_name = os.path.basename(apk_paths[0]) if apk_paths else f"StorySum-{tag}.apk"
         step2_push_github_release(
             cwd=cwd,
             apk_paths=apk_paths,
             tag=tag,
             title=args.title or f"Release {tag}",
-            notes=args.notes or f"Release {tag} - ARM64-v8a Release APK ({apk_name})",
+            notes=args.notes or f"Release {tag} - StorySum Android ARM64 Release ({apk_name})",
             token=token,
             owner=owner,
             repo=repo

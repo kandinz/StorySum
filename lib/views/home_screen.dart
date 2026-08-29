@@ -38,6 +38,17 @@ class _HomeScreenState extends State<HomeScreen> {
   StoryViewTab _activeTab = StoryViewTab.summary;
   NavTab _activeNavTab = NavTab.library;
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final appState = Provider.of<AppStateProvider>(context, listen: false);
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
+      final player = Provider.of<PlayerStateProvider>(context, listen: false);
+      appState.loadSavedDataProgressive(settings: settings, player: player);
+    });
+  }
+
   GlobalKey _getSentenceKey(AudioSourceType type, int index) {
     final keyStr = '${type.name}_$index';
     return _sentenceKeys.putIfAbsent(keyStr, () => GlobalKey());

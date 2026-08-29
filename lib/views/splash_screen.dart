@@ -52,15 +52,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
       // Bước 1: Khởi tạo Cấu hình & Giọng đọc
       setState(() {
-        _progress = 0.25;
+        _progress = 0.4;
         _statusText = 'Đang khởi tạo cấu hình & giọng đọc...';
       });
       await settings.init();
-      await Future.delayed(const Duration(milliseconds: 100));
 
       // Bước 2: Khởi tạo Dịch vụ âm thanh & Trình phát
       setState(() {
-        _progress = 0.55;
+        _progress = 0.8;
         _statusText = 'Đang nạp dịch vụ âm thanh & trình phát...';
       });
       final audioHandler = await initAudioService();
@@ -89,28 +88,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         appState.stopPlayback(player: player);
       };
 
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      // Bước 3: Tải Kho truyện & Lịch sử đọc
-      setState(() {
-        _progress = 0.85;
-        _statusText = 'Đang nạp kho truyện & lịch sử đọc...';
-      });
-      await appState.loadSavedData();
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      // Bước 4: Hoàn tất
+      // Bước 3: Sẵn sàng -> Chuyển thẳng sang Kho truyện (HomeScreen) ngay lập tức
       setState(() {
         _progress = 1.0;
         _statusText = 'Sẵn sàng!';
       });
 
-      await Future.delayed(const Duration(milliseconds: 150));
-
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 400),
+            transitionDuration: const Duration(milliseconds: 300),
             pageBuilder: (context, animation, secondaryAnimation) => const HomeScreen(),
             transitionsBuilder: (context, animation, secondaryAnimation, child) {
               return FadeTransition(
@@ -126,7 +113,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         setState(() {
           _statusText = 'Lỗi khởi động: $e';
         });
-        await Future.delayed(const Duration(seconds: 1));
+        await Future.delayed(const Duration(milliseconds: 800));
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const HomeScreen()),

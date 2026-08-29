@@ -759,70 +759,95 @@ class _StorySearchModalState extends State<StorySearchModal> {
 
         // Danh sách truyện trong Kho truyện
         Expanded(
-          child: filteredStories.isEmpty
+          child: appState.isLoadingLibrary
               ? Center(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          _query.isNotEmpty ? Icons.search_off_rounded : Icons.menu_book_outlined,
-                          size: 54,
-                          color: colors.textMuted.withValues(alpha: 0.35),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 38,
+                        height: 38,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _query.isNotEmpty
-                              ? 'Không tìm thấy truyện phù hợp'
-                              : 'Kho truyện đang trống',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: colors.textPrimary,
-                          ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Đang tải kho truyện...',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                          color: colors.textMuted,
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _query.isNotEmpty
-                              ? 'Không tìm thấy truyện nào khớp với từ khóa "$_query".'
-                              : 'Bạn chưa lưu truyện nào trong kho. Hãy bấm nút "Thêm Truyện" để thêm truyện từ file hoặc link web.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            color: colors.textMuted,
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: colors.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                            elevation: 0,
-                          ),
-                          icon: Icon(_query.isNotEmpty ? Icons.clear_rounded : Icons.add_rounded, size: 18),
-                          label: Text(
-                            _query.isNotEmpty ? 'Xóa từ khóa tìm kiếm' : 'Thêm Truyện Ngay',
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                          ),
-                          onPressed: () {
-                            if (_query.isNotEmpty) {
-                              _searchController.clear();
-                              setState(() => _query = '');
-                            } else {
-                              _showAddStoryModal(context, colors, appState, settings, player);
-                            }
-                          },
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 )
-              : ListView.separated(
+              : filteredStories.isEmpty
+                  ? Center(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _query.isNotEmpty ? Icons.search_off_rounded : Icons.menu_book_outlined,
+                              size: 54,
+                              color: colors.textMuted.withValues(alpha: 0.35),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _query.isNotEmpty
+                                  ? 'Không tìm thấy truyện phù hợp'
+                                  : 'Kho truyện đang trống',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _query.isNotEmpty
+                                  ? 'Không tìm thấy truyện nào khớp với từ khóa "$_query".'
+                                  : 'Bạn chưa lưu truyện nào trong kho. Hãy bấm nút "Thêm Truyện" để thêm truyện từ file hoặc link web.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: colors.textMuted,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: colors.primary,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                elevation: 0,
+                              ),
+                              icon: Icon(_query.isNotEmpty ? Icons.clear_rounded : Icons.add_rounded, size: 18),
+                              label: Text(
+                                _query.isNotEmpty ? 'Xóa từ khóa tìm kiếm' : 'Thêm Truyện Ngay',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: () {
+                                if (_query.isNotEmpty) {
+                                  _searchController.clear();
+                                  setState(() => _query = '');
+                                } else {
+                                  _showAddStoryModal(context, colors, appState, settings, player);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
                   physics: const BouncingScrollPhysics(),
                   itemCount: filteredStories.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),

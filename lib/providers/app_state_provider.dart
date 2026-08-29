@@ -96,7 +96,15 @@ class AppStateProvider extends ChangeNotifier {
   List<SavedAudioItem> _savedAudios = [];
   List<ChapterModel> _historyChapters = [];
 
+  // Progressive loading flags
+  bool _isLoadingLibrary = true;
+  bool _isLoadingChapters = false;
+  bool _isLoadingHistory = false;
+
   // Getters
+  bool get isLoadingLibrary => _isLoadingLibrary;
+  bool get isLoadingChapters => _isLoadingChapters;
+  bool get isLoadingHistory => _isLoadingHistory;
   bool get isProcessing => _isProcessing;
   bool get isImportingFile => _isImportingFile;
   String get currentStatusMessage => _currentStatusMessage;
@@ -298,10 +306,48 @@ class AppStateProvider extends ChangeNotifier {
     return result;
   }
 
-  Future<void> loadSavedData() async {
-    _savedAudios = await db.getAllSavedAudios();
-    _historyChapters = await db.getAllChapters();
+  /// Nạp dữ liệu lũy tiến 3 giai đoạn mượt mà:
+  /// Giai đoạn 1: Nạp siêu nhanh danh sách truyện đã thêm và render ngay lập tức
+  /// Giai đoạn 2: Nạp chi tiết các chương (full content) chạy ngầm
+  /// Giai đoạn 3: Nạp lịch sử đọc và đồng bộ trạng thái
+  Future<void> loadSavedDataProgressive({
+    SettingsProvider? settings,
+    PlayerStateProvider? player,
+  }) async {
+    // 1. GIAI ĐOẠN 1: Nạp danh sách truyện đã thêm (Lightweight) và hiển thị ngay trên UI
+    _isLoadingLibrary = true;
+    notifyListeners();
 
+    try {
+      final lightAudios = await db.getLightweightSavedAudios();
+      final lightChapters = await db.getLightweightChapters();
+      _savedAudios = lightAudios;
+      _historyChapters = lightChapters;
+    } catch (e) {
+      print('Lỗi load danh sách truyện nhẹ: $e');
+    } finally {
+      _isLoadingLibrary = false;
+      notifyListeners();
+    }
+
+    // 2. GIAI ĐOẠN 2: Nạp tiếp chi tiết các chương (Full content) chạy ngầm
+    _isLoadingChapters = true;
+    notifyListeners();
+    try {
+      final fullAudios = await db.getAllSavedAudios();
+      final fullChapters = await db.getAllChapters();
+      _savedAudios = fullAudios;
+      _historyChapters = fullChapters;
+    } catch (e) {
+      print('Lỗi load chi tiết chương: $e');
+    } finally {
+      _isLoadingChapters = false;
+      notifyListeners();
+    }
+
+    // 3. GIAI ĐOẠN 3: Nạp tiếp lịch sử đọc và đồng bộ tiến độ
+    _isLoadingHistory = true;
+    notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
       _lastPlayedStoryTitle = prefs.getString(AppConstants.keyLastPlayedStory);
@@ -317,9 +363,16 @@ class AppStateProvider extends ChangeNotifier {
       if (_lastPlayedChapterNumber != null && _lastPlayedChapterNumber! > 0) {
         chapterController.text = _lastPlayedChapterNumber.toString();
       }
-    } catch (_) {}
+    } catch (e) {
+      print('Lỗi load lịch sử đọc: $e');
+    } finally {
+      _isLoadingHistory = false;
+      notifyListeners();
+    }
+  }
 
-    notifyListeners();
+  Future<void> loadSavedData() async {
+    await loadSavedDataProgressive();
   }
 
   /// Dán link từ Clipboard, giữ nguyên vẹn link gốc, tự động nhận diện số chương và tự động tải lại truyện
@@ -1321,19 +1374,20 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
-  /// Xử lý đồng bộ lại trạng thái âm thanh và tự động tạo audio khi người dùng đổi giọng đọc
+  /// Xử lý đồng bộ lại trạng thái âm thanh và tự động nạp/phát lại audio khi người dùng đổi giọng đọc
   Future<void> onVoiceChanged({
     required SettingsProvider settings,
     PlayerStateProvider? player,
   }) async {
-    // 1. Ghi nhận trạng thái phát trước đó và tạm dừng phát
-    final wasPlaying = player != null && player.isPlaying;
+    // 1. Ghi nhận trạng thái phát trước đó và dừng phát audio của giọng cũ
+    final wasPlaying = player != null && (player.isPlaying || player.currentAudioPath != null);
     if (player != null && player.isPlaying) {
       await player.stop(resetPause: false);
     }
 
-    // 2. Hủy tiến trình tạo audio của giọng cũ
+    // 2. Hủy các tiến trình tạo audio của giọng cũ
     ++_generationSessionId;
+    ++_preloadTaskId;
 
     if (_currentChapter == null) {
       notifyListeners();
@@ -1395,23 +1449,47 @@ class AppStateProvider extends ChangeNotifier {
 
     notifyListeners();
 
-    // 5. Nếu đang phát trước đó -> phát tiếp câu hiện tại và kích hoạt tạo audio theo giọng mới
-    final startIdx = _activeSentenceIndex ?? 0;
+    // 5. Nếu đang phát trước đó -> nạp audio câu đang phát và phát lại câu đó ngay, đồng thời nạp tiếp các câu tiếp theo & chương tiếp theo
+    final targetList = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
+    int targetIdx = _activeSentenceIndex ?? (_activeAudioSource == AudioSourceType.summary ? _currentSummarySentenceIndex : _currentContentSentenceIndex);
+    targetIdx = getEffectiveSentenceIndex(targetIdx, targetList.length);
+
     if (wasPlaying && !player.isPausedByUser) {
-      final targetList = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
       if (targetList.isNotEmpty) {
+        // A. Load audio và phát lại câu đang phát theo giọng đọc mới
         await playSentence(
           sourceType: _activeAudioSource,
-          sentenceIndex: startIdx,
+          sentenceIndex: targetIdx,
           settings: settings,
           player: player,
         );
+
+        // B. Đồng thời sinh ngầm audio theo giọng đọc mới cho các câu tiếp theo trong chương hiện tại
         _startSequentialGeneration(
           chapter: _currentChapter!,
           settings: settings,
           player: player,
-          startIndex: startIdx,
+          startIndex: targetIdx + 1,
         );
+
+        ensureLookaheadAudio(
+          sourceType: _activeAudioSource,
+          fromIndex: targetIdx,
+          settings: settings,
+          player: player,
+        );
+      }
+
+      // C. Đồng thời nạp/tạo trước audio cho chương tiếp theo theo giọng đọc mới
+      if (_preloadedNextChapter != null) {
+        _preloadAudioForChapter(
+          preloaded: _preloadedNextChapter!,
+          settings: settings,
+          taskId: _preloadTaskId,
+          player: player,
+        );
+      } else {
+        _preloadNextChapter(settings: settings, player: player);
       }
     }
   }
