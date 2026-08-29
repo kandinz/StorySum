@@ -19,17 +19,25 @@ import '../../providers/player_state_provider.dart';
 
 class KtoolSettingsModal extends StatefulWidget {
   final bool asPage;
+  final int initialTabIndex;
 
-  const KtoolSettingsModal({Key? key, this.asPage = false}) : super(key: key);
+  const KtoolSettingsModal({
+    Key? key,
+    this.asPage = false,
+    this.initialTabIndex = 0,
+  }) : super(key: key);
 
-  const KtoolSettingsModal.page({Key? key}) : asPage = true, super(key: key);
+  const KtoolSettingsModal.page({
+    Key? key,
+    this.initialTabIndex = 0,
+  }) : asPage = true, super(key: key);
 
-  static void show(BuildContext context) {
+  static void show(BuildContext context, {int initialTabIndex = 0}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => const KtoolSettingsModal(),
+      builder: (context) => KtoolSettingsModal(initialTabIndex: initialTabIndex),
     );
   }
 
@@ -38,7 +46,7 @@ class KtoolSettingsModal extends StatefulWidget {
 }
 
 class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
-  int _selectedTabIndex = 0; // 0: Audio & Truyện, 1: Dịch & Tóm tắt, 2: Donate
+  late int _selectedTabIndex; // 0: Audio & Truyện, 1: Dịch & Tóm tắt, 2: Donate
 
   late TextEditingController _summaryPromptController;
   late TextEditingController _translatePromptController;
@@ -64,6 +72,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
   @override
   void initState() {
     super.initState();
+    _selectedTabIndex = widget.initialTabIndex;
     final settings = Provider.of<SettingsProvider>(context, listen: false);
 
     _summaryPromptController = TextEditingController(text: settings.systemPrompt);

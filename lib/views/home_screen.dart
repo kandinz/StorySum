@@ -720,7 +720,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (isSummary && !appState.isProcessing && settings.workingApiKeys.isEmpty) ...[
+                      if (isSummary && !appState.isProcessing && settings.currentProviderApiKeys.isEmpty) ...[
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
@@ -751,7 +751,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
-                          onPressed: () => KtoolSettingsModal.show(context),
+                          onPressed: () => KtoolSettingsModal.show(context, initialTabIndex: 1),
                           icon: const Icon(Icons.settings_rounded, size: 18),
                           label: const Text('Mở Cài Đặt API Key', style: TextStyle(fontWeight: FontWeight.bold)),
                           style: ElevatedButton.styleFrom(
@@ -762,7 +762,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                           ),
                         ),
-                      ] else if (isSummary && !appState.isProcessing && appState.summaryErrorMessage != null) ...[
+                      ] else if (isSummary && !appState.isProcessing && (appState.summaryErrorMessage != null || settings.workingApiKeys.isEmpty)) ...[
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
@@ -787,7 +787,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          appState.summaryErrorMessage!,
+                          appState.summaryErrorMessage ?? 'Tất cả ${settings.currentProviderApiKeys.length} API Key của ${settings.aiProvider} đều bị lỗi hoặc hết hạn mức/quota.',
                           style: TextStyle(color: colors.textSecondary, fontSize: 12.5, height: 1.4),
                           textAlign: TextAlign.center,
                         ),
@@ -796,9 +796,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             OutlinedButton.icon(
-                              onPressed: () => KtoolSettingsModal.show(context),
+                              onPressed: () => KtoolSettingsModal.show(context, initialTabIndex: 1),
                               icon: const Icon(Icons.settings_rounded, size: 16),
-                              label: const Text('Cài Đặt', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                              label: const Text('Cài Đặt API Key', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: colors.primary,
                                 side: BorderSide(color: colors.primary.withValues(alpha: 0.5)),

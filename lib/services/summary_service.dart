@@ -37,7 +37,7 @@ class SummaryService {
     }
 
     if (keys.isEmpty) {
-      throw Exception('Chưa có API Key cho $pName. Vui lòng thêm Key trong Cài đặt > Cấu hình AI.');
+      throw Exception('Chưa có API Key cho $pName. Vui lòng thêm Key trong Cài đặt > Dịch & Tóm tắt.');
     }
 
     String lastError = '';
@@ -67,7 +67,7 @@ class SummaryService {
           processingTimeMs: stopwatch.elapsedMilliseconds,
         );
       } catch (e) {
-        lastError = e.toString();
+        lastError = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
         print('Lỗi $pName API với key ...${currentKey.length > 6 ? currentKey.substring(currentKey.length - 4) : ""}: $e');
         onKeyFailed?.call(currentKey);
         // Tiếp tục thử key kế tiếp trong danh sách
@@ -75,7 +75,7 @@ class SummaryService {
     }
 
     stopwatch.stop();
-    throw Exception('Tất cả API Key $pName đều bị lỗi hoặc hết hạn mức/quota: $lastError');
+    throw Exception('Tất cả API Key $pName (${keys.length} key) đều bị lỗi hoặc hết hạn mức/quota: $lastError');
   }
 
   /// Gọi API Dịch nội dung chương sang tiếng Việt với cơ chế tự động xoay vòng Key

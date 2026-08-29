@@ -683,77 +683,53 @@ class _StorySearchModalState extends State<StorySearchModal> {
         ),
         Divider(color: colors.border, height: 16),
 
-        // Thanh Tìm kiếm theo tên truyện + Nút Tìm kiếm
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                height: 42,
-                decoration: BoxDecoration(
-                  color: colors.cardBackground,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: colors.border),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  focusNode: _focusNode,
-                  style: TextStyle(fontSize: 13.5, color: colors.textPrimary),
-                  decoration: InputDecoration(
-                    hintText: 'Tìm kiếm theo tên truyện...',
-                    hintStyle: TextStyle(color: colors.textMuted, fontSize: 12.5),
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      size: 20,
-                      color: colors.textMuted,
-                    ),
-                    suffixIcon: _query.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(Icons.clear_rounded, size: 18, color: colors.textMuted),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _query = '');
-                            },
-                          )
-                        : null,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                  ),
-                  onChanged: (val) {
-                    setState(() => _query = val);
-                  },
-                  onSubmitted: (_) {
-                    FocusScope.of(context).unfocus();
-                  },
-                ),
+        // Thanh Tìm kiếm theo tên truyện
+        Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: colors.cardBackground,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.border),
+          ),
+          child: TextField(
+            controller: _searchController,
+            focusNode: _focusNode,
+            textAlignVertical: TextAlignVertical.center,
+            style: TextStyle(fontSize: 13.5, color: colors.textPrimary),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Tìm kiếm theo tên truyện, chương...',
+              hintStyle: TextStyle(color: colors.textMuted, fontSize: 13),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                size: 20,
+                color: _query.isNotEmpty ? colors.primary : colors.textMuted,
               ),
+              prefixIconConstraints: const BoxConstraints(minWidth: 42, minHeight: 44),
+              suffixIcon: _query.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.cancel_rounded, size: 18, color: colors.textMuted),
+                      splashRadius: 18,
+                      constraints: const BoxConstraints(minWidth: 38, minHeight: 44),
+                      padding: EdgeInsets.zero,
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _query = '');
+                      },
+                    )
+                  : null,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
             ),
-            const SizedBox(width: 8),
-            SizedBox(
-              height: 42,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: colors.primary.withValues(alpha: 0.12),
-                  foregroundColor: colors.primary,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(color: colors.primary.withValues(alpha: 0.3)),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                ),
-                icon: const Icon(Icons.search_rounded, size: 18),
-                label: const Text(
-                  'Tìm',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-                onPressed: () {
-                  FocusScope.of(context).unfocus();
-                },
-              ),
-            ),
-          ],
+            onChanged: (val) {
+              setState(() => _query = val);
+            },
+            onSubmitted: (_) {
+              FocusScope.of(context).unfocus();
+            },
+          ),
         ),
         const SizedBox(height: 12),
 

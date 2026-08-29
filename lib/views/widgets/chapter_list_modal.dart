@@ -261,22 +261,25 @@ class _ChapterListModalState extends State<ChapterListModal> {
           Container(
             decoration: BoxDecoration(
               color: colors.cardBackground,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: colors.border),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            padding: const EdgeInsets.fromLTRB(10, 4, 6, 4),
             child: Row(
               children: [
                 Icon(Icons.link_rounded, size: 18, color: colors.primary),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _urlController,
+                    textAlignVertical: TextAlignVertical.center,
                     style: TextStyle(fontSize: 12.5, color: colors.textPrimary),
                     decoration: InputDecoration(
-                      hintText: 'Nhập link truyện để tải chương còn thiếu...',
-                      hintStyle: TextStyle(color: colors.textMuted, fontSize: 11.5),
+                      hintText: 'Dán link truyện để tải thêm chương...',
+                      hintStyle: TextStyle(color: colors.textMuted, fontSize: 12),
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 8),
                     ),
@@ -290,7 +293,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
                       backgroundColor: isCrawlingThisStory ? Colors.redAccent : colors.primary,
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                     ),
                     icon: Icon(
@@ -344,30 +347,42 @@ class _ChapterListModalState extends State<ChapterListModal> {
 
           // Ô tìm kiếm chương
           Container(
+            height: 44,
             decoration: BoxDecoration(
               color: colors.cardBackground,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: colors.border),
             ),
             child: TextField(
               controller: _searchController,
-              style: TextStyle(fontSize: 13, color: colors.textPrimary),
+              textAlignVertical: TextAlignVertical.center,
+              style: TextStyle(fontSize: 13.5, color: colors.textPrimary),
               decoration: InputDecoration(
+                isDense: true,
                 hintText: 'Tìm kiếm số chương hoặc tên chương...',
-                hintStyle: TextStyle(color: colors.textMuted, fontSize: 12),
-                prefixIcon: Icon(Icons.search_rounded, size: 18, color: colors.textMuted),
+                hintStyle: TextStyle(color: colors.textMuted, fontSize: 13),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  size: 20,
+                  color: _searchQuery.isNotEmpty ? colors.primary : colors.textMuted,
+                ),
+                prefixIconConstraints: const BoxConstraints(minWidth: 42, minHeight: 44),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear_rounded, size: 16, color: colors.textMuted),
+                        icon: Icon(Icons.cancel_rounded, size: 18, color: colors.textMuted),
+                        splashRadius: 18,
+                        constraints: const BoxConstraints(minWidth: 38, minHeight: 44),
+                        padding: EdgeInsets.zero,
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _searchQuery = '');
                         },
                       )
                     : null,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 border: InputBorder.none,
-                isDense: true,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
               ),
               onChanged: (val) => setState(() => _searchQuery = val),
             ),

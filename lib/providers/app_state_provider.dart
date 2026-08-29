@@ -1918,6 +1918,7 @@ class AppStateProvider extends ChangeNotifier {
   /// Tự động tóm tắt chương hiện tại nếu chưa có bản tóm tắt nào
   Future<void> autoSummarizeIfEmpty(SettingsProvider settings) async {
     if (_currentChapter == null || _isProcessing) return;
+    if (settings.currentProviderApiKeys.isEmpty) return;
     if (settings.workingApiKeys.isEmpty) return;
     if (_summarySentences.isEmpty && (_currentSummary == null || _currentSummary!.summaryText.trim().isEmpty)) {
       await summarizeCurrentChapter(settings);
@@ -1933,6 +1934,18 @@ class AppStateProvider extends ChangeNotifier {
 
   Future<void> summarizeCurrentChapter(SettingsProvider settings) async {
     if (_currentChapter == null) return;
+    if (settings.currentProviderApiKeys.isEmpty) {
+      _summaryErrorMessage = 'Chưa có API Key cho ${settings.aiProvider}. Vui lòng thêm Key trong Cài đặt > Dịch & Tóm tắt.';
+      _currentStatusMessage = 'Chưa có API Key';
+      notifyListeners();
+      return;
+    }
+
+    // Nếu tất cả key đã bị đánh dấu lỗi trong phiên, reset để cho phép thử lại
+    if (settings.workingApiKeys.isEmpty && settings.currentProviderApiKeys.isNotEmpty) {
+      settings.resetFailedKeys();
+    }
+
     _isProcessing = true;
     _currentStatusMessage = 'Đang tóm tắt AI...';
     _summaryErrorMessage = null;
@@ -1941,7 +1954,7 @@ class AppStateProvider extends ChangeNotifier {
       final summary = await summaryService.summarizeText(
         chapterId: _currentChapter!.id,
         text: _currentChapter!.content,
-        apiKeys: settings.workingApiKeys,
+        apiKeys: settings.workingApiKeys.isNotEmpty ? settings.workingApiKeys : settings.currentProviderApiKeys,
         modelName: settings.selectedModel,
         domain: settings.currentProviderDomain,
         providerName: settings.aiProvider,
