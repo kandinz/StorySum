@@ -306,73 +306,103 @@ class DatabaseHelper {
 
   Future<List<SavedAudioItem>> getAllSavedAudios() async {
     final db = await database;
-    final result = await db.query(AppConstants.tableAudios, orderBy: 'created_at DESC');
+    // Tối ưu: Dùng một câu lệnh query LEFT JOIN duy nhất thay vì lặp N+1 queries
+    final rawList = await db.rawQuery('''
+      SELECT 
+        a.id AS a_id,
+        a.title AS a_title,
+        a.story_title AS a_story_title,
+        a.chapter_number AS a_chapter_number,
+        a.audio_path AS a_audio_path,
+        a.summary_text AS a_summary_text,
+        a.duration_seconds AS a_duration_seconds,
+        a.file_size_bytes AS a_file_size_bytes,
+        a.voice_used AS a_voice_used,
+        a.created_at AS a_created_at,
+        a.last_played_sentence AS a_last_played_sentence,
+        a.last_played_summary_index AS a_last_played_summary_index,
+        a.last_played_content_index AS a_last_played_content_index,
+        a.last_played_source AS a_last_played_source,
+        a.last_played_at AS a_last_played_at,
+        c.id AS c_id,
+        c.chapter_title AS c_chapter_title,
+        c.content AS c_content,
+        c.last_played_sentence AS c_last_played_sentence,
+        c.last_played_summary_index AS c_last_played_summary_index,
+        c.last_played_content_index AS c_last_played_content_index,
+        c.last_played_source AS c_last_played_source,
+        c.last_played_at AS c_last_played_at
+      FROM ${AppConstants.tableAudios} a
+      LEFT JOIN ${AppConstants.tableChapters} c
+        ON a.chapter_number = c.chapter_number
+        AND (a.story_title = c.story_title OR a.story_title = '' OR c.story_title = '')
+      ORDER BY a.created_at DESC
+    ''');
+
     final items = <SavedAudioItem>[];
-    for (var json in result) {
-      final storyTitle = json['story_title'] as String? ?? '';
-      final chapterNumber = json['chapter_number'] is int
-          ? json['chapter_number'] as int
-          : int.tryParse(json['chapter_number']?.toString() ?? '0') ?? 0;
+    for (var row in rawList) {
+      final actualChapterTitle = row['c_chapter_title'] as String?;
+      final content = row['c_content'] as String?;
+      final chapterId = row['c_id'] as String?;
 
-      final chapters = await db.query(
-        AppConstants.tableChapters,
-        where: "chapter_number = ? AND (story_title = ? OR ? = '')",
-        whereArgs: [chapterNumber, storyTitle, storyTitle],
-        limit: 1,
-      );
-      String? content;
-      String? chapterId;
-      String? actualChapterTitle;
-      int lastPlayedSentence = json['last_played_sentence'] is int
-          ? json['last_played_sentence'] as int
-          : int.tryParse(json['last_played_sentence']?.toString() ?? '0') ?? 0;
-      int lastSummaryIdx = json['last_played_summary_index'] is int
-          ? json['last_played_summary_index'] as int
-          : int.tryParse(json['last_played_summary_index']?.toString() ?? '') ?? 0;
-      int lastContentIdx = json['last_played_content_index'] is int
-          ? json['last_played_content_index'] as int
-          : int.tryParse(json['last_played_content_index']?.toString() ?? '') ?? 0;
+      int lastPlayedSentence = row['a_last_played_sentence'] is int
+          ? row['a_last_played_sentence'] as int
+          : int.tryParse(row['a_last_played_sentence']?.toString() ?? '0') ?? 0;
+      int lastSummaryIdx = row['a_last_played_summary_index'] is int
+          ? row['a_last_played_summary_index'] as int
+          : int.tryParse(row['a_last_played_summary_index']?.toString() ?? '') ?? 0;
+      int lastContentIdx = row['a_last_played_content_index'] is int
+          ? row['a_last_played_content_index'] as int
+          : int.tryParse(row['a_last_played_content_index']?.toString() ?? '') ?? 0;
 
-      String lastPlayedSource = json['last_played_source']?.toString() ?? 'summary';
-      DateTime? lastPlayedAt = json['last_played_at'] != null
-          ? DateTime.tryParse(json['last_played_at'].toString())
+      String lastPlayedSource = row['a_last_played_source']?.toString() ?? 'summary';
+      DateTime? lastPlayedAt = row['a_last_played_at'] != null
+          ? DateTime.tryParse(row['a_last_played_at'].toString())
           : null;
 
-      if (chapters.isNotEmpty) {
-        content = chapters.first['content'] as String?;
-        chapterId = chapters.first['id'] as String?;
-        actualChapterTitle = chapters.first['chapter_title'] as String?;
-        if (lastPlayedSentence == 0 && chapters.first['last_played_sentence'] != null) {
-          lastPlayedSentence = chapters.first['last_played_sentence'] is int
-              ? chapters.first['last_played_sentence'] as int
-              : int.tryParse(chapters.first['last_played_sentence'].toString()) ?? 0;
+      if (chapterId != null) {
+        if (lastPlayedSentence == 0 && row['c_last_played_sentence'] != null) {
+          lastPlayedSentence = row['c_last_played_sentence'] is int
+              ? row['c_last_played_sentence'] as int
+              : int.tryParse(row['c_last_played_sentence'].toString()) ?? 0;
         }
-        if (lastSummaryIdx == 0 && chapters.first['last_played_summary_index'] != null) {
-          lastSummaryIdx = chapters.first['last_played_summary_index'] is int
-              ? chapters.first['last_played_summary_index'] as int
-              : int.tryParse(chapters.first['last_played_summary_index'].toString()) ?? 0;
+        if (lastSummaryIdx == 0 && row['c_last_played_summary_index'] != null) {
+          lastSummaryIdx = row['c_last_played_summary_index'] is int
+              ? row['c_last_played_summary_index'] as int
+              : int.tryParse(row['c_last_played_summary_index'].toString()) ?? 0;
         }
-        if (lastContentIdx == 0 && chapters.first['last_played_content_index'] != null) {
-          lastContentIdx = chapters.first['last_played_content_index'] is int
-              ? chapters.first['last_played_content_index'] as int
-              : int.tryParse(chapters.first['last_played_content_index'].toString()) ?? 0;
+        if (lastContentIdx == 0 && row['c_last_played_content_index'] != null) {
+          lastContentIdx = row['c_last_played_content_index'] is int
+              ? row['c_last_played_content_index'] as int
+              : int.tryParse(row['c_last_played_content_index'].toString()) ?? 0;
         }
-        if (chapters.first['last_played_source'] != null) {
-          lastPlayedSource = chapters.first['last_played_source'].toString();
+        if (row['c_last_played_source'] != null) {
+          lastPlayedSource = row['c_last_played_source'].toString();
         }
-        if (lastPlayedAt == null && chapters.first['last_played_at'] != null) {
-          lastPlayedAt = DateTime.tryParse(chapters.first['last_played_at'].toString());
+        if (lastPlayedAt == null && row['c_last_played_at'] != null) {
+          lastPlayedAt = DateTime.tryParse(row['c_last_played_at'].toString());
         }
       }
-      var mapData = Map<String, dynamic>.from(json);
-      if (actualChapterTitle != null && actualChapterTitle.isNotEmpty) {
-        mapData['title'] = actualChapterTitle;
-      }
-      mapData['last_played_sentence'] = lastPlayedSentence;
-      mapData['last_played_summary_index'] = lastSummaryIdx;
-      mapData['last_played_content_index'] = lastContentIdx;
-      mapData['last_played_source'] = lastPlayedSource;
-      mapData['last_played_at'] = lastPlayedAt?.toIso8601String();
+
+      final mapData = <String, dynamic>{
+        'id': row['a_id'],
+        'title': (actualChapterTitle != null && actualChapterTitle.isNotEmpty)
+            ? actualChapterTitle
+            : (row['a_title'] ?? 'Audio không tên'),
+        'story_title': row['a_story_title'] ?? '',
+        'chapter_number': row['a_chapter_number'],
+        'audio_path': row['a_audio_path'] ?? '',
+        'summary_text': row['a_summary_text'],
+        'duration_seconds': row['a_duration_seconds'],
+        'file_size_bytes': row['a_file_size_bytes'],
+        'voice_used': row['a_voice_used'],
+        'created_at': row['a_created_at'],
+        'last_played_sentence': lastPlayedSentence,
+        'last_played_summary_index': lastSummaryIdx,
+        'last_played_content_index': lastContentIdx,
+        'last_played_source': lastPlayedSource,
+        'last_played_at': lastPlayedAt?.toIso8601String(),
+      };
 
       items.add(SavedAudioItem.fromMap(mapData, content: content, chapterId: chapterId));
     }

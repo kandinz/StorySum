@@ -7,6 +7,8 @@ import '../models/chapter_model.dart';
 import '../core/utils/text_normalizer.dart';
 
 class CrawlerService {
+  final http.Client _httpClient = http.Client();
+
   final Map<String, String> _headers = {
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -55,9 +57,9 @@ class CrawlerService {
       if (customHeaders != null) ...customHeaders,
     };
 
-    // 1. Thử tải qua HTTP thông thường
+    // 1. Thử tải qua HTTP thông thường với Connection Keep-Alive
     try {
-      final response = await http
+      final response = await _httpClient
           .get(uri, headers: mergedHeaders)
           .timeout(const Duration(seconds: 12));
       if (response.statusCode == 200) {

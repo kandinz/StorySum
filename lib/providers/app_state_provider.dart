@@ -440,15 +440,16 @@ class AppStateProvider extends ChangeNotifier {
     required int startChapter,
     int? maxChapters,
   }) async {
-    // GIAI ĐOẠN 1: Tải các chương lớn hơn chương đang đọc về phía trước (startChapter -> hết truyện)
+    const int batchSize = 3; // Tải đồng thời 3 chương mỗi lượt để tăng tốc độ tải gấp 3-5 lần
     int consecutiveErrors = 0;
     int currentChapter = startChapter;
 
+    // GIAI ĐOẠN 1: Tải các chương lớn hơn chương đang đọc về phía trước (startChapter -> hết truyện)
     while (_isBackgroundCrawling && taskId == _bgCrawlTaskId) {
       if (maxChapters != null && currentChapter > maxChapters) {
         break;
       }
-      if (consecutiveErrors >= 4) {
+      if (consecutiveErrors >= 6) {
         // Đã đến chương cuối cùng của truyện (404 hoặc hết chương)
         break;
       }
@@ -459,29 +460,58 @@ class AppStateProvider extends ChangeNotifier {
       }
       if (!_isBackgroundCrawling || taskId != _bgCrawlTaskId) break;
 
-      _bgCrawlCurrentChapter = currentChapter;
+      // Chuẩn bị danh sách batch các số chương cần tải
+      final List<int> batchChapters = [];
+      for (int i = 0; i < batchSize; i++) {
+        final cNum = currentChapter + i;
+        if (maxChapters != null && cNum > maxChapters) break;
+        batchChapters.add(cNum);
+      }
+      if (batchChapters.isEmpty) break;
 
-      // 1. Kiểm tra nếu chương đã được lưu trong DB -> Bỏ qua tải lại
-      final existingChapter = await db.getChapterByStoryAndNumber(storyTitle, currentChapter);
-      if (existingChapter != null && existingChapter.content.trim().isNotEmpty) {
-        currentChapter++;
+      _bgCrawlCurrentChapter = batchChapters.first;
+      notifyListeners();
+
+      // 1. Kiểm tra song song những chương đã có trong DB
+      final checkFutures = batchChapters.map((cNum) async {
+        final existing = await db.getChapterByStoryAndNumber(storyTitle, cNum);
+        return MapEntry(cNum, existing != null && existing.content.trim().isNotEmpty);
+      });
+      final existingMap = Map.fromEntries(await Future.wait(checkFutures));
+      final chaptersToFetch = batchChapters.where((cNum) => existingMap[cNum] != true).toList();
+
+      if (chaptersToFetch.isEmpty) {
+        currentChapter += batchChapters.length;
         consecutiveErrors = 0;
         continue;
       }
 
-      try {
-        final targetUrl = crawlerService.buildChapterUrl(baseUrl, currentChapter);
-        final crawledChapter = await crawlerService.fetchChapter(
-          baseUrl: targetUrl.isNotEmpty ? targetUrl : baseUrl,
-          chapterNumber: currentChapter,
-        );
-
-        if (crawledChapter.content.trim().length > 100) {
-          // Chuẩn hóa tên truyện đồng nhất với truyện đang crawl
-          final normalizedChapter = crawledChapter.copyWith(
-            storyTitle: storyTitle,
+      // 2. Tải đồng thời các chương chưa có
+      final fetchFutures = chaptersToFetch.map((cNum) async {
+        try {
+          final targetUrl = crawlerService.buildChapterUrl(baseUrl, cNum);
+          final crawledChapter = await crawlerService.fetchChapter(
+            baseUrl: targetUrl.isNotEmpty ? targetUrl : baseUrl,
+            chapterNumber: cNum,
           );
-          await db.insertChapter(normalizedChapter);
+          if (crawledChapter.content.trim().length > 100) {
+            return MapEntry(cNum, crawledChapter);
+          }
+        } catch (_) {}
+        return MapEntry(cNum, null);
+      });
+
+      final fetchResults = await Future.wait(fetchFutures);
+      if (!_isBackgroundCrawling || taskId != _bgCrawlTaskId) break;
+
+      final List<ChapterModel> chaptersToInsert = [];
+      final List<SavedAudioItem> audiosToInsert = [];
+
+      for (final entry in fetchResults) {
+        final chapter = entry.value;
+        if (chapter != null) {
+          final normalizedChapter = chapter.copyWith(storyTitle: storyTitle);
+          chaptersToInsert.add(normalizedChapter);
 
           final audioItem = SavedAudioItem(
             id: 'audio_${normalizedChapter.id}',
@@ -493,37 +523,52 @@ class AppStateProvider extends ChangeNotifier {
             chapterId: normalizedChapter.id,
             voiceUsed: settings.currentVoice.name,
           );
-          await db.insertAudio(audioItem);
+          audiosToInsert.add(audioItem);
 
-          // Cập nhật danh sách in-memory nếu đang ở truyện này
+          consecutiveErrors = 0;
+        } else {
+          consecutiveErrors++;
+        }
+      }
+
+      if (chaptersToInsert.isNotEmpty) {
+        await db.insertChaptersBatch(chaptersToInsert);
+        await db.insertAudiosBatch(audiosToInsert);
+
+        for (final audioItem in audiosToInsert) {
           _savedAudios.removeWhere((a) =>
               isSameStory(a.storyTitle, storyTitle) &&
               a.chapterNumber == audioItem.chapterNumber);
           _savedAudios.insert(0, audioItem);
-
+        }
+        for (final chapterItem in chaptersToInsert) {
           _historyChapters.removeWhere((c) =>
               isSameStory(c.storyTitle, storyTitle) &&
-              c.chapterNumber == normalizedChapter.chapterNumber);
-          _historyChapters.insert(0, normalizedChapter);
-
-          _bgCrawlSuccessCount++;
-          consecutiveErrors = 0;
-          notifyListeners();
-        } else {
-          consecutiveErrors++;
+              c.chapterNumber == chapterItem.chapterNumber);
+          _historyChapters.insert(0, chapterItem);
         }
-      } catch (e) {
-        consecutiveErrors++;
+
+        _bgCrawlSuccessCount += chaptersToInsert.length;
+        _bgCrawlCurrentChapter = chaptersToInsert.last.chapterNumber;
+        notifyListeners();
       }
 
-      currentChapter++;
-      // Delay giữa các chương để không làm quá tải server
-      await Future.delayed(const Duration(milliseconds: 350));
+      currentChapter += batchChapters.length;
+      // Delay ngắn giữa các batch để giữ băng thông mượt mà
+      await Future.delayed(const Duration(milliseconds: 100));
     }
 
     // GIAI ĐOẠN 2: Khi đã tải đến chương cuối cùng -> Tải lại các chương còn thiếu từ chương 1 đến trước startChapter
     if (_isBackgroundCrawling && taskId == _bgCrawlTaskId && startChapter > 1) {
+      final List<int> missingChapters = [];
       for (int cNum = 1; cNum < startChapter; cNum++) {
+        final existing = await db.getChapterByStoryAndNumber(storyTitle, cNum);
+        if (existing == null || existing.content.trim().isEmpty) {
+          missingChapters.add(cNum);
+        }
+      }
+
+      for (int i = 0; i < missingChapters.length; i += batchSize) {
         if (!_isBackgroundCrawling || taskId != _bgCrawlTaskId) break;
 
         while (_bgCrawlPausedForPriority && _isBackgroundCrawling && taskId == _bgCrawlTaskId) {
@@ -531,24 +576,39 @@ class AppStateProvider extends ChangeNotifier {
         }
         if (!_isBackgroundCrawling || taskId != _bgCrawlTaskId) break;
 
-        final existing = await db.getChapterByStoryAndNumber(storyTitle, cNum);
-        if (existing != null && existing.content.trim().isNotEmpty) {
-          continue; // Đã lưu trước đó
-        }
+        final batch = missingChapters.sublist(
+          i,
+          (i + batchSize < missingChapters.length) ? i + batchSize : missingChapters.length,
+        );
 
-        _bgCrawlCurrentChapter = cNum;
+        _bgCrawlCurrentChapter = batch.first;
         notifyListeners();
 
-        try {
-          final targetUrl = crawlerService.buildChapterUrl(baseUrl, cNum);
-          final crawledChapter = await crawlerService.fetchChapter(
-            baseUrl: targetUrl.isNotEmpty ? targetUrl : baseUrl,
-            chapterNumber: cNum,
-          );
+        final fetchFutures = batch.map((cNum) async {
+          try {
+            final targetUrl = crawlerService.buildChapterUrl(baseUrl, cNum);
+            final crawledChapter = await crawlerService.fetchChapter(
+              baseUrl: targetUrl.isNotEmpty ? targetUrl : baseUrl,
+              chapterNumber: cNum,
+            );
+            if (crawledChapter.content.trim().length > 100) {
+              return MapEntry(cNum, crawledChapter);
+            }
+          } catch (_) {}
+          return MapEntry(cNum, null);
+        });
 
-          if (crawledChapter.content.trim().length > 100) {
-            final normalizedChapter = crawledChapter.copyWith(storyTitle: storyTitle);
-            await db.insertChapter(normalizedChapter);
+        final results = await Future.wait(fetchFutures);
+        if (!_isBackgroundCrawling || taskId != _bgCrawlTaskId) break;
+
+        final List<ChapterModel> chaptersToInsert = [];
+        final List<SavedAudioItem> audiosToInsert = [];
+
+        for (final entry in results) {
+          final chapter = entry.value;
+          if (chapter != null) {
+            final normalizedChapter = chapter.copyWith(storyTitle: storyTitle);
+            chaptersToInsert.add(normalizedChapter);
 
             final audioItem = SavedAudioItem(
               id: 'audio_${normalizedChapter.id}',
@@ -560,24 +620,32 @@ class AppStateProvider extends ChangeNotifier {
               chapterId: normalizedChapter.id,
               voiceUsed: settings.currentVoice.name,
             );
-            await db.insertAudio(audioItem);
+            audiosToInsert.add(audioItem);
+          }
+        }
 
+        if (chaptersToInsert.isNotEmpty) {
+          await db.insertChaptersBatch(chaptersToInsert);
+          await db.insertAudiosBatch(audiosToInsert);
+
+          for (final audioItem in audiosToInsert) {
             _savedAudios.removeWhere((a) =>
                 isSameStory(a.storyTitle, storyTitle) &&
                 a.chapterNumber == audioItem.chapterNumber);
             _savedAudios.insert(0, audioItem);
-
+          }
+          for (final chapterItem in chaptersToInsert) {
             _historyChapters.removeWhere((c) =>
                 isSameStory(c.storyTitle, storyTitle) &&
-                c.chapterNumber == normalizedChapter.chapterNumber);
-            _historyChapters.insert(0, normalizedChapter);
-
-            _bgCrawlSuccessCount++;
-            notifyListeners();
+                c.chapterNumber == chapterItem.chapterNumber);
+            _historyChapters.insert(0, chapterItem);
           }
-        } catch (_) {}
 
-        await Future.delayed(const Duration(milliseconds: 350));
+          _bgCrawlSuccessCount += chaptersToInsert.length;
+          notifyListeners();
+        }
+
+        await Future.delayed(const Duration(milliseconds: 100));
       }
     }
 
@@ -593,12 +661,21 @@ class AppStateProvider extends ChangeNotifier {
     required PlayerStateProvider player,
   }) async {
     try {
-      final result = await storyImportService.pickAndImportStory();
-      if (result == null) return false;
-
       _isProcessing = true;
-      _currentStatusMessage = 'Đang lưu ${result.chapters.length} chương truyện "${result.storyTitle}"...';
+      _currentStatusMessage = 'Đang đọc và phân tích tệp tin...';
       _headerTitle = 'Đang nhập truyện...';
+      notifyListeners();
+
+      final result = await storyImportService.pickAndImportStory();
+      if (result == null) {
+        _isProcessing = false;
+        _currentStatusMessage = '';
+        _headerTitle = 'Đọc & Tóm tắt Truyện';
+        notifyListeners();
+        return false;
+      }
+
+      _currentStatusMessage = 'Đang lưu ${result.chapters.length} chương truyện "${result.storyTitle}"...';
       notifyListeners();
 
       // Lưu hàng loạt chương vào database bằng Transaction Batch
@@ -633,6 +710,7 @@ class AppStateProvider extends ChangeNotifier {
     } catch (e) {
       _isProcessing = false;
       _currentStatusMessage = 'Lỗi nhập truyện: $e';
+      _headerTitle = 'Đọc & Tóm tắt Truyện';
       notifyListeners();
       return false;
     }

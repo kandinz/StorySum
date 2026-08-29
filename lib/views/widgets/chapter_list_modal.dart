@@ -217,7 +217,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
             ],
           ),
 
-          // Status bar tải ngầm nếu đang chạy
+          // Status bar tải nếu đang chạy
           if (isCrawlingThisStory) ...[
             const SizedBox(height: 8),
             Container(
@@ -240,7 +240,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Đang tải ngầm: Chương ${appState.bgCrawlCurrentChapter} (Đã nạp ${appState.bgCrawlSuccessCount} chương)...',
+                      'Đang tải: Chương ${appState.bgCrawlCurrentChapter} (Đã nạp ${appState.bgCrawlSuccessCount} chương)...',
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w500,
@@ -250,20 +250,6 @@ class _ChapterListModalState extends State<ChapterListModal> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  InkWell(
-                    onTap: () => appState.stopBackgroundCrawl(),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      child: Text(
-                        'Dừng',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.redAccent,
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -271,7 +257,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
 
           const SizedBox(height: 10),
 
-          // Ô nhập Link truyện & Nút Tải truyện (để tiếp tục tải các chương còn thiếu)
+          // Ô nhập Link truyện & Nút Tải chương mới (để tiếp tục tải các chương còn thiếu)
           Container(
             decoration: BoxDecoration(
               color: colors.cardBackground,
@@ -312,7 +298,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
                       size: 15,
                     ),
                     label: Text(
-                      isCrawlingThisStory ? 'Dừng tải' : 'Tải truyện',
+                      isCrawlingThisStory ? 'Dừng tải' : 'Tải chương mới',
                       style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
                     ),
                     onPressed: () async {
