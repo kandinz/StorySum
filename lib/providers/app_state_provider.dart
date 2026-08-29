@@ -394,12 +394,12 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Bắt đầu crawl ngầm toàn bộ truyện từ chương 1 đến chương cuối
+  /// Bắt đầu crawl ngầm toàn bộ truyện: Tải các chương lớn hơn chương đang đọc trước, khi đến chương cuối mới tải lại các chương còn thiếu phía trước
   void startBackgroundStoryCrawl({
     required String baseUrl,
     required String storyTitle,
     required SettingsProvider settings,
-    int startChapter = 1,
+    int? startChapter,
     int? maxChapters,
   }) {
     if (baseUrl.trim().isEmpty || storyTitle.trim().isEmpty) return;
@@ -408,10 +408,17 @@ class AppStateProvider extends ChangeNotifier {
     _bgCrawlTaskId++;
     final currentTaskId = _bgCrawlTaskId;
 
+    int effectiveStartChapter = startChapter ?? 1;
+    if (startChapter == null) {
+      if (_currentChapter != null && isSameStory(_currentChapter!.storyTitle, storyTitle)) {
+        effectiveStartChapter = _currentChapter!.chapterNumber + 1;
+      }
+    }
+
     _isBackgroundCrawling = true;
     _bgCrawlStoryTitle = storyTitle;
     _bgCrawlBaseUrl = baseUrl;
-    _bgCrawlCurrentChapter = startChapter;
+    _bgCrawlCurrentChapter = effectiveStartChapter;
     _bgCrawlSuccessCount = 0;
     notifyListeners();
 
@@ -420,7 +427,7 @@ class AppStateProvider extends ChangeNotifier {
       baseUrl: baseUrl,
       storyTitle: storyTitle,
       settings: settings,
-      startChapter: startChapter,
+      startChapter: effectiveStartChapter,
       maxChapters: maxChapters,
     );
   }
@@ -433,6 +440,7 @@ class AppStateProvider extends ChangeNotifier {
     required int startChapter,
     int? maxChapters,
   }) async {
+    // GIAI ĐOẠN 1: Tải các chương lớn hơn chương đang đọc về phía trước (startChapter -> hết truyện)
     int consecutiveErrors = 0;
     int currentChapter = startChapter;
 
@@ -511,6 +519,66 @@ class AppStateProvider extends ChangeNotifier {
       currentChapter++;
       // Delay giữa các chương để không làm quá tải server
       await Future.delayed(const Duration(milliseconds: 350));
+    }
+
+    // GIAI ĐOẠN 2: Khi đã tải đến chương cuối cùng -> Tải lại các chương còn thiếu từ chương 1 đến trước startChapter
+    if (_isBackgroundCrawling && taskId == _bgCrawlTaskId && startChapter > 1) {
+      for (int cNum = 1; cNum < startChapter; cNum++) {
+        if (!_isBackgroundCrawling || taskId != _bgCrawlTaskId) break;
+
+        while (_bgCrawlPausedForPriority && _isBackgroundCrawling && taskId == _bgCrawlTaskId) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+        if (!_isBackgroundCrawling || taskId != _bgCrawlTaskId) break;
+
+        final existing = await db.getChapterByStoryAndNumber(storyTitle, cNum);
+        if (existing != null && existing.content.trim().isNotEmpty) {
+          continue; // Đã lưu trước đó
+        }
+
+        _bgCrawlCurrentChapter = cNum;
+        notifyListeners();
+
+        try {
+          final targetUrl = crawlerService.buildChapterUrl(baseUrl, cNum);
+          final crawledChapter = await crawlerService.fetchChapter(
+            baseUrl: targetUrl.isNotEmpty ? targetUrl : baseUrl,
+            chapterNumber: cNum,
+          );
+
+          if (crawledChapter.content.trim().length > 100) {
+            final normalizedChapter = crawledChapter.copyWith(storyTitle: storyTitle);
+            await db.insertChapter(normalizedChapter);
+
+            final audioItem = SavedAudioItem(
+              id: 'audio_${normalizedChapter.id}',
+              title: normalizedChapter.chapterTitle,
+              storyTitle: storyTitle,
+              chapterNumber: normalizedChapter.chapterNumber,
+              audioPath: '',
+              content: normalizedChapter.content,
+              chapterId: normalizedChapter.id,
+              voiceUsed: settings.currentVoice.name,
+            );
+            await db.insertAudio(audioItem);
+
+            _savedAudios.removeWhere((a) =>
+                isSameStory(a.storyTitle, storyTitle) &&
+                a.chapterNumber == audioItem.chapterNumber);
+            _savedAudios.insert(0, audioItem);
+
+            _historyChapters.removeWhere((c) =>
+                isSameStory(c.storyTitle, storyTitle) &&
+                c.chapterNumber == normalizedChapter.chapterNumber);
+            _historyChapters.insert(0, normalizedChapter);
+
+            _bgCrawlSuccessCount++;
+            notifyListeners();
+          }
+        } catch (_) {}
+
+        await Future.delayed(const Duration(milliseconds: 350));
+      }
     }
 
     if (taskId == _bgCrawlTaskId) {

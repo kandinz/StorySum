@@ -79,28 +79,51 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     });
   }
 
-  void _syncBgmWithVoice(bool isVoicePlaying) {
+  Future<void> _ensureBgmPrepared() async {
+    if (_currentBgmUrl == null || _currentBgmUrl!.isEmpty) return;
+    if (_bgmPlayer.audioSource != null && _bgmPlayer.processingState != ProcessingState.idle) {
+      return;
+    }
+    try {
+      if (_isBgmLocal) {
+        await _bgmPlayer.setFilePath(_currentBgmUrl!);
+      } else {
+        await _bgmPlayer.setUrl(_currentBgmUrl!);
+      }
+      await _bgmPlayer.setLoopMode(LoopMode.all);
+      await _bgmPlayer.setVolume(_bgmVolume);
+    } catch (_) {}
+  }
+
+  Future<void> _syncBgmWithVoice(bool isVoicePlaying) async {
     if (_isPreviewingBgm) return;
     if (_bgmEnabled && _currentBgmUrl != null && _currentBgmUrl!.isNotEmpty) {
       if (isVoicePlaying) {
+        await _ensureBgmPrepared();
         if (!_bgmPlayer.playing) {
-          _bgmPlayer.play().catchError((_) {});
+          try {
+            await _bgmPlayer.play();
+          } catch (_) {}
         }
       } else {
         if (_bgmPlayer.playing) {
-          _bgmPlayer.pause().catchError((_) {});
+          try {
+            await _bgmPlayer.pause();
+          } catch (_) {}
         }
       }
     } else {
       if (_bgmPlayer.playing) {
-        _bgmPlayer.pause().catchError((_) {});
+        try {
+          await _bgmPlayer.pause();
+        } catch (_) {}
       }
     }
   }
 
   Future<void> setBgmEnabled(bool enabled) async {
     _bgmEnabled = enabled;
-    _syncBgmWithVoice(_player.playing);
+    await _syncBgmWithVoice(_player.playing);
   }
 
   Future<void> setBgmVolume(double volume) async {
@@ -109,7 +132,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   Future<void> setBgmTrack(String url, {bool isLocal = false}) async {
-    if (_currentBgmUrl == url && _isBgmLocal == isLocal) return;
+    if (_currentBgmUrl == url && _isBgmLocal == isLocal && _bgmPlayer.audioSource != null) return;
 
     _currentBgmUrl = url;
     _isBgmLocal = isLocal;
@@ -164,19 +187,19 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   @override
   Future<void> play() async {
     await _player.play();
-    _syncBgmWithVoice(true);
+    await _syncBgmWithVoice(true);
   }
 
   @override
   Future<void> pause() async {
     await _player.pause();
-    _syncBgmWithVoice(false);
+    await _syncBgmWithVoice(false);
   }
 
   @override
   Future<void> stop() async {
     await _player.stop();
-    _syncBgmWithVoice(false);
+    await _syncBgmWithVoice(false);
   }
 
   @override
@@ -211,6 +234,6 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
     await _player.setFilePath(filePath);
     await _player.play();
-    _syncBgmWithVoice(true);
+    await _syncBgmWithVoice(true);
   }
 }

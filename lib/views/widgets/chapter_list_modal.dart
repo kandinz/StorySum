@@ -332,16 +332,12 @@ class _ChapterListModalState extends State<ChapterListModal> {
                         return;
                       }
 
-                      // Tìm chương còn thiếu nhỏ nhất trong dãy bắt đầu từ 1
-                      int nextStartChapter = 1;
+                      // Ưu tiên tải các chương lớn hơn chương đang đọc trước (currentChapterNum + 1)
+                      int nextStartChapter = currentChapterNum + 1;
                       if (currentStoryAudios.isNotEmpty) {
                         final existingNums = currentStoryAudios.map((c) => c.chapterNumber).toSet();
-                        final maxNum = currentStoryAudios.map((c) => c.chapterNumber).reduce((a, b) => a > b ? a : b);
-                        for (int i = 1; i <= maxNum + 1; i++) {
-                          if (!existingNums.contains(i)) {
-                            nextStartChapter = i;
-                            break;
-                          }
+                        if (!existingNums.contains(currentChapterNum)) {
+                          nextStartChapter = currentChapterNum;
                         }
                       }
 

@@ -30,6 +30,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _chapterFocusNode = FocusNode();
   final Map<String, GlobalKey> _sentenceKeys = {};
   int? _lastActiveSentenceIndex;
   AudioSourceType? _lastActiveSourceType;
@@ -40,6 +41,24 @@ class _HomeScreenState extends State<HomeScreen> {
   GlobalKey _getSentenceKey(AudioSourceType type, int index) {
     final keyStr = '${type.name}_$index';
     return _sentenceKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
+
+  void _onChapterInputSubmittedOrUnfocused(AppStateProvider appState, SettingsProvider settings, PlayerStateProvider player) {
+    _chapterDebounceTimer?.cancel();
+    final trimmed = appState.chapterController.text.trim();
+    final parsed = int.tryParse(trimmed);
+    if (parsed != null && parsed > 0) {
+      final currentNum = appState.currentChapter?.chapterNumber;
+      if (currentNum == null || currentNum != parsed) {
+        if (!appState.isProcessing) {
+          appState.changeToChapter(parsed, settings: settings, player: player);
+        }
+      }
+    } else {
+      if (appState.currentChapter != null) {
+        appState.chapterController.text = appState.currentChapter!.chapterNumber.toString();
+      }
+    }
   }
 
   void _checkAndScrollToActive(AppStateProvider appState) {
@@ -92,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _chapterDebounceTimer?.cancel();
+    _chapterFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -854,48 +874,38 @@ class _HomeScreenState extends State<HomeScreen> {
         border: Border.all(color: colors.border, width: 1.2),
       ),
       child: Center(
-        child: TextField(
-          controller: appState.chapterController,
-          keyboardType: TextInputType.number,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: colors.textPrimary,
-            fontSize: 13.5,
-            fontWeight: FontWeight.bold,
-          ),
-          decoration: InputDecoration(
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            errorBorder: InputBorder.none,
-            disabledBorder: InputBorder.none,
-            filled: false,
-            hintText: 'Số',
-            hintStyle: TextStyle(color: colors.textMuted, fontSize: 12),
-          ),
-          onChanged: (val) {
-            _chapterDebounceTimer?.cancel();
-            final trimmed = val.trim();
-            final parsed = int.tryParse(trimmed);
-            if (parsed != null && parsed > 0) {
-              final currentNum = appState.currentChapter?.chapterNumber;
-              if (currentNum == null || currentNum != parsed) {
-                _chapterDebounceTimer = Timer(const Duration(milliseconds: 700), () {
-                  if (mounted && !appState.isProcessing) {
-                    appState.reloadCurrentChapter(settings: settings, player: player);
-                  }
-                });
-              }
+        child: Focus(
+          onFocusChange: (hasFocus) {
+            if (!hasFocus) {
+              _onChapterInputSubmittedOrUnfocused(appState, settings, player);
             }
           },
-          onSubmitted: (_) {
-            _chapterDebounceTimer?.cancel();
-            if (!appState.isProcessing) {
-              appState.reloadCurrentChapter(settings: settings, player: player);
-            }
-          },
+          child: TextField(
+            controller: appState.chapterController,
+            focusNode: _chapterFocusNode,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontSize: 13.5,
+              fontWeight: FontWeight.bold,
+            ),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              filled: false,
+              hintText: 'Số',
+              hintStyle: TextStyle(color: colors.textMuted, fontSize: 12),
+            ),
+            onSubmitted: (_) {
+              _onChapterInputSubmittedOrUnfocused(appState, settings, player);
+            },
+          ),
         ),
       ),
     );

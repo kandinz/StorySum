@@ -39,10 +39,10 @@ void main() async {
   // Khởi tạo PlayerState Provider
   final playerStateProvider = PlayerStateProvider(playerService: audioPlayerService);
 
-  // Đồng bộ cấu hình BGM khi khởi động
-  await audioPlayerService.setBgmEnabled(settingsProvider.bgmEnabled);
-  await audioPlayerService.setBgmVolume(settingsProvider.bgmVolume);
-  await audioPlayerService.setBgmTrack(
+  // Đồng bộ cấu hình BGM khi khởi động (chạy ngầm không chặn luồng khởi động giao diện)
+  audioPlayerService.setBgmEnabled(settingsProvider.bgmEnabled);
+  audioPlayerService.setBgmVolume(settingsProvider.bgmVolume);
+  audioPlayerService.setBgmTrack(
     settingsProvider.currentBgmTrack.url,
     isLocal: settingsProvider.currentBgmTrack.isLocal,
   );
