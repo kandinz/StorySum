@@ -1572,6 +1572,7 @@ class AppStateProvider extends ChangeNotifier {
   Future<void> onVoiceChanged({
     required SettingsProvider settings,
     PlayerStateProvider? player,
+    String? oldVoiceId,
   }) async {
     // 1. Ghi nhận trạng thái phát trước đó và dừng ngay phát audio của giọng cũ, xóa sạch audio cũ trên player
     final wasPlaying = player != null && (player.isPlaying || (!player.isPausedByUser && player.currentAudioPath != null));
@@ -1584,12 +1585,32 @@ class AppStateProvider extends ChangeNotifier {
     final sessionId = ++_generationSessionId;
     final taskId = ++_preloadTaskId;
 
-    if (_currentChapter == null) {
-      notifyListeners();
-      return;
+    // 3. Thu thập danh sách các file audio cũ đã nạp trong bộ nhớ để xóa vật lý trên đĩa
+    final List<String> pathsToDelete = [];
+    for (final s in _summarySentences) {
+      if (s.audioPath != null && s.audioPath!.isNotEmpty) {
+        pathsToDelete.add(s.audioPath!);
+      }
+    }
+    for (final s in _contentSentences) {
+      if (s.audioPath != null && s.audioPath!.isNotEmpty) {
+        pathsToDelete.add(s.audioPath!);
+      }
+    }
+    if (_preloadedNextChapter != null) {
+      for (final s in _preloadedNextChapter!.summarySentences) {
+        if (s.audioPath != null && s.audioPath!.isNotEmpty) {
+          pathsToDelete.add(s.audioPath!);
+        }
+      }
+      for (final s in _preloadedNextChapter!.contentSentences) {
+        if (s.audioPath != null && s.audioPath!.isNotEmpty) {
+          pathsToDelete.add(s.audioPath!);
+        }
+      }
     }
 
-    // 3. Xóa ngay lập tức tất cả audio đã nạp của giọng cũ trong bộ nhớ (cả câu đang phát và toàn bộ danh sách)
+    // 4. Xóa ngay lập tức tất cả audio đã nạp của giọng cũ trong bộ nhớ
     if (_summarySentences.isNotEmpty) {
       _summarySentences = _summarySentences
           .map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false))
@@ -1603,7 +1624,19 @@ class AppStateProvider extends ChangeNotifier {
     _preloadedNextChapter = null;
     notifyListeners();
 
-    // 4. Quét lại audio của giọng mới cho tóm tắt & nội dung từ cache trên đĩa
+    // 5. Xóa triệt để toàn bộ file audio vật lý của giọng cũ trên ổ đĩa
+    await AudioExporter.deleteSentenceAudioFiles(pathsToDelete);
+    await AudioExporter.deleteOldVoiceAudioFiles(
+      oldVoiceId: oldVoiceId,
+      currentVoiceId: settings.selectedVoiceId,
+    );
+
+    if (_currentChapter == null) {
+      notifyListeners();
+      return;
+    }
+
+    // 6. Quét lại audio của giọng mới cho tóm tắt & nội dung từ cache trên đĩa
     final voice = settings.currentVoice;
     final voiceId = settings.selectedVoiceId;
 
@@ -3177,6 +3210,12 @@ class AppStateProvider extends ChangeNotifier {
           } catch (_) {}
         }
       }
+      // Xóa tất cả các file audio câu thuộc chương này trên đĩa
+      await AudioExporter.deleteChapterAudioFiles(
+        storyTitle: storyTitle,
+        chapterNumber: item.chapterNumber,
+      );
+
       if (item.chapterId != null && item.chapterId!.isNotEmpty) {
         await db.deleteChapter(item.chapterId!);
         await db.deleteSummary(item.chapterId!);
@@ -3216,6 +3255,7 @@ class AppStateProvider extends ChangeNotifier {
         }
       }
     }
+    await AudioExporter.deleteAllAudios();
     await db.clearAllData();
     _savedAudios.clear();
     _historyChapters.clear();
@@ -3241,6 +3281,9 @@ class AppStateProvider extends ChangeNotifier {
       }
       await db.deleteAudio(item.id);
     }
+    // Xóa tất cả các file audio câu thuộc toàn bộ truyện này trên đĩa
+    await AudioExporter.deleteStoryAudioFiles(storyTitle);
+
     _savedAudios.removeWhere(
         (a) => AppStateProvider.isSameStory(a.storyTitle, storyTitle));
     _historyChapters.removeWhere(

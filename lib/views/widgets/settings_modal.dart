@@ -1028,11 +1028,16 @@ class _SettingsModalState extends State<SettingsModal> {
           file.path!,
           cleanVoiceName.isNotEmpty ? cleanVoiceName : 'Giọng tùy biến',
         );
+        final oldVoiceId = settings.selectedVoiceId;
         await settings.addCustomVoice(voice);
         await settings.setSelectedVoice(voice.id);
         if (context.mounted) {
           final player = Provider.of<PlayerStateProvider>(context, listen: false);
-          await appState.onVoiceChanged(settings: settings, player: player);
+          await appState.onVoiceChanged(
+            settings: settings,
+            player: player,
+            oldVoiceId: oldVoiceId,
+          );
           AppToast.showSuccess(
             context,
             'Đã nạp thành công giọng: ${voice.name}',
@@ -1325,11 +1330,17 @@ class _SettingsModalState extends State<SettingsModal> {
 
     return PopupMenuButton<String>(
       onSelected: (val) async {
+        final oldVoiceId = settings.selectedVoiceId;
+        if (oldVoiceId == val) return;
         await settings.setSelectedVoice(val);
         if (context.mounted) {
           final appState = Provider.of<AppStateProvider>(context, listen: false);
           final player = Provider.of<PlayerStateProvider>(context, listen: false);
-          await appState.onVoiceChanged(settings: settings, player: player);
+          await appState.onVoiceChanged(
+            settings: settings,
+            player: player,
+            oldVoiceId: oldVoiceId,
+          );
         }
       },
       color: colors.elevatedBackground,

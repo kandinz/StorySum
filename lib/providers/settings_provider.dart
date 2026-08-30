@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/app_constants.dart';
 import '../core/theme/app_theme.dart';
+import '../core/utils/audio_exporter.dart';
 import '../models/voice_model.dart';
 import '../models/ai_provider_model.dart';
 import '../models/bgm_track_model.dart';
@@ -591,6 +592,9 @@ class SettingsProvider extends ChangeNotifier {
           } catch (_) {}
         }
       }
+      // Xóa tất cả các file audio đã từng tạo bằng custom voice này
+      await AudioExporter.deleteVoiceAudioFiles(voiceId);
+
       _availableVoices.removeAt(index);
       if (_selectedVoiceId == voiceId) {
         _selectedVoiceId = AppConstants.defaultVoiceId;
