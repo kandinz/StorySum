@@ -89,7 +89,7 @@ class TextNormalizer {
     // 5. Khử các ký tự né kiểm duyệt nằm giữa các ký tự của từ:
     // ví dụ: t·hi, t•hể, c*hết, s_át, g~iết, đ|ánh, m-á-u, c/h/ế/t, m\á\u, g#i#ế#t, k@o, v.v.
     final obfuscationPattern = RegExp(
-      r'([a-zA-ZÀ-ỹ0-9])\s*[\u00B7\u2022\u2027\u22C5\u2024\*\_\~\|\/\#\@\$\%\^\&\+\=\-\\\\]\s*([a-zA-ZÀ-ỹ0-9])',
+      r'([a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF])\s*[\u00B7\u2022\u2027\u22C5\u2024\*\_\~\|\/\#\@\$\%\^\&\+\=\-\\\\]\s*([a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF])',
     );
     while (obfuscationPattern.hasMatch(text)) {
       text = text.replaceAllMapped(obfuscationPattern, (m) => '${m.group(1)}${m.group(2)}');
@@ -98,7 +98,7 @@ class TextNormalizer {
     // Khử dấu chấm né kiểm duyệt giữa từng chữ cái không có khoảng trắng (vd: g.i.ế.t -> giết, t.h.i -> thi)
     // Lưu ý: Chỉ khử khi cả 2 bên là chữ cái dính liền dấu chấm (không có khoảng trắng, không áp dụng cho số thập phân 3.14)
     final dotObfuscationPattern = RegExp(
-      r'([a-zA-ZÀ-ỹ])\.([a-zA-ZÀ-ỹ])',
+      r'([a-zA-Z\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF])\.([a-zA-Z\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF])',
     );
     while (dotObfuscationPattern.hasMatch(text)) {
       text = text.replaceAllMapped(dotObfuscationPattern, (m) => '${m.group(1)}${m.group(2)}');
@@ -110,7 +110,7 @@ class TextNormalizer {
     // 7. Chuyển đổi từ khóa theo yêu cầu đọc đúng ngữ cảnh TTS:
     // "thi thể" -> "chết" (Bảo toàn chữ hoa/thường)
     text = text.replaceAllMapped(
-      RegExp(r'(^|[^a-zA-ZÀ-ỹ0-9])thi\s+(?:thể|thê\u0309)(?![a-zA-ZÀ-ỹ0-9])', caseSensitive: false),
+      RegExp(r'(^|[^a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF])thi\s+(?:thể|thê\u0309)(?![a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF])', caseSensitive: false),
       (match) {
         final prefix = match.group(1) ?? '';
         final fullMatch = match.group(0)!;
@@ -143,16 +143,16 @@ class TextNormalizer {
     text = text.replaceAll(RegExp(r'[—–―]'), ', ');
 
     // 11. Loại bỏ các ký tự đặc biệt, biểu tượng toán học, tiền tệ, hình khối, đồ họa còn lại
-    // Chỉ giữ lại: chữ cái tiếng Việt, chữ số, khoảng trắng và các dấu câu tiêu chuẩn (. , ! ? : ; ' " - ( ) … \n)
+    // Bảo toàn toàn bộ chữ cái (tiếng Việt, CJK/chữ Hán, Latin,...), chữ số, khoảng trắng và các dấu câu tiêu chuẩn (. , ! ? : ; ' " - ( ) … ~ \n)
     text = text.replaceAll(
-      RegExp(r'''[^\sa-zA-Z0-9\u00C0-\u1EF9.,!?:;'"\-\(\)…\n]'''),
+      RegExp(r'''[^\sa-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF.,!?:;'"\-\(\)…~/\n]'''),
       ' ',
     );
 
     // 12. Tự động chèn khoảng trắng khi dấu câu dính liền với câu tiếp theo (VD: "câu 1.câu 2" -> "câu 1. câu 2")
     // Bảo toàn số thập phân (3.14, 1.5) bằng cách chỉ chèn khoảng trắng khi sau dấu chấm là chữ cái hoặc dấu mở ngoặc/kép
     text = text.replaceAllMapped(
-      RegExp(r'(\.{3,}|…|[.!?])(?=[a-zA-ZÀ-ỹ“«\(\[{])'),
+      RegExp(r'(\.{3,}|…|[.!?])(?=[a-zA-Z\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF“«\(\[{])'),
       (m) => '${m.group(1)} ',
     );
 

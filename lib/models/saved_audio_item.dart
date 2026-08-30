@@ -200,7 +200,7 @@ class SavedAudioItem {
     int count = 0;
     for (final raw in rawList) {
       final t = raw.trim();
-      if (t.isNotEmpty && RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9]').hasMatch(t)) {
+      if (t.isNotEmpty && RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(t)) {
         count++;
       }
     }

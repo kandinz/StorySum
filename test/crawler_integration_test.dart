@@ -46,5 +46,17 @@ void main() {
         rethrow;
       }
     }, timeout: const Timeout(Duration(seconds: 20)));
+
+    test('Crawl truyenfull.live chapter', () async {
+      const truyenfullUrl = 'https://truyenfull.live/quy-bi-chi-chu/quyen-1-chuong-1/';
+      final chapter = await crawler.crawlChapterFromUrl(truyenfullUrl).timeout(const Duration(seconds: 15));
+      print('Truyenfull story: ${chapter.storyTitle}');
+      print('Truyenfull chapter: ${chapter.chapterTitle}');
+      print('Truyenfull number: ${chapter.chapterNumber}');
+      print('Truyenfull words: ${chapter.wordCount}');
+      expect(chapter.storyTitle, isNotEmpty);
+      expect(chapter.chapterNumber, equals(1));
+      expect(chapter.wordCount, greaterThan(50));
+    }, timeout: const Timeout(Duration(seconds: 20)));
   });
 }

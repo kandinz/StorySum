@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:archive/archive.dart';
@@ -36,20 +37,100 @@ Sau bao gian nan, cậu đã trở thành một bậc thầy vĩ đại.
       expect(result.chapters[2].chapterTitle, 'Chương 3: Kết thúc hành trình');
     });
 
-    test('Phân tích file TXT không có tiêu đề chương (tự động phân đoạn theo từ)', () {
-      // Tạo văn bản dài lặp lại để kiểm tra phân đoạn
-      final paragraph = 'Đây là một đoạn văn bản dài miêu tả câu chuyện phiêu lưu hấp dẫn. ' * 50;
-      final fullText = List.generate(30, (i) => 'Đoạn $i: $paragraph').join('\n\n');
+    test('Phân tích file TXT tiếng Trung dạng số 3 chữ số và tên file chứa thông tin tác giả (VD: 001 下次再见...)', () {
+      const chineseTxtContent = '''
+恶魔疯缠：宝贝，今天又要杀我吗
+Author: 时凌
+Description:
+　　• 当前来源：番茄
+　　• 书籍主角：米迦勒,路西法
 
-      final bytes = Uint8List.fromList(utf8.encode(fullText));
-      final result = service.importFromTxt(bytes, 'Truyen_Khong_Chia_Chuong.txt');
+001 下次再见，吃干抹尽
+　　“圣洁美丽的炽天使殿下，被关在黑暗的地狱中成为我身下的感觉如何？”
+　　“米迦勒，既然不爱，那就恨吧。”
 
-      expect(result.storyTitle, 'Truyen Khong Chia Chuong');
-      expect(result.chapters.length, greaterThanOrEqualTo(2));
+002 是蛇啊~
+　　朦朦胧胧的莹光照进偌大的寝殿里面。
+　　床上轻纱帐似弱风扶柳般的轻轻晃动着。
+　　天使没有着衣睡觉的习惯。
+
+003 事业脑路西法限时上线
+　　地狱深处的大殿之上，恶魔之王正凝视着手中的权杖。
+''';
+
+      final bytes = Uint8List.fromList(utf8.encode(chineseTxtContent));
+      final result = service.importFromTxt(
+        bytes,
+        '恶魔疯缠：宝贝，今天又要杀我吗 作者：时凌.txt',
+        sourcePath: r'C:\Users\Gum\Downloads\恶魔疯缠：宝贝，今天又要杀我吗 作者：时凌.txt',
+      );
+
+      expect(result.storyTitle, '恶魔疯缠：宝贝，今天又要杀我吗');
+      expect(result.chapters.length, 3);
       expect(result.chapters[0].chapterNumber, 1);
-      expect(result.chapters[0].chapterTitle, 'Chương 1');
+      expect(result.chapters[0].chapterTitle, 'Chương 1: 下次再见，吃干抹尽');
+      expect(result.chapters[0].content, contains('圣洁美丽的炽天使殿下'));
       expect(result.chapters[1].chapterNumber, 2);
-      expect(result.chapters[1].chapterTitle, 'Chương 2');
+      expect(result.chapters[1].chapterTitle, 'Chương 2: 是蛇啊~');
+      expect(result.chapters[1].content, contains('天使没有着衣睡觉的习惯'));
+      expect(result.chapters[2].chapterNumber, 3);
+      expect(result.chapters[2].chapterTitle, 'Chương 3: 事业脑路西法限时上线');
+    });
+
+    test('Phân tích file TXT tiếng Trung có định dạng 第...章 và số chữ Hán', () {
+      const chineseNumContent = '''
+第一章 初入仙途
+少年踏上修仙之路，天地灵气汇聚周身。
+
+第十二章 突破筑基
+雷劫降临，九天神雷滚滚而来。
+
+第一百零五章 飞升仙界
+金光万道，飞升仙界的通道终于打开。
+''';
+
+      final bytes = Uint8List.fromList(utf8.encode(chineseNumContent));
+      final result = service.importFromTxt(bytes, '《修仙传奇》 [作者：忘语].txt');
+
+      expect(result.storyTitle, '修仙传奇');
+      expect(result.chapters.length, 3);
+      expect(result.chapters[0].chapterNumber, 1);
+      expect(result.chapters[0].chapterTitle, 'Chương 1: 初入仙途');
+      expect(result.chapters[1].chapterNumber, 12);
+      expect(result.chapters[1].chapterTitle, 'Chương 12: 突破筑基');
+      expect(result.chapters[2].chapterNumber, 105);
+      expect(result.chapters[2].chapterTitle, 'Chương 105: 飞升仙界');
+    });
+
+    test('Làm sạch tên truyện và chuyển đổi số chữ Hán chính xác', () {
+      expect(StoryImportService.cleanStoryTitle('恶魔疯缠：宝贝，今天又要杀我吗 作者：时凌.txt'), '恶魔疯缠：宝贝，今天又要杀我吗');
+      expect(StoryImportService.cleanStoryTitle('[Full] Đấu La Đại Lục - Tác giả: Đường Gia Tam Thiếu.txt'), 'Đấu La Đại Lục');
+      expect(StoryImportService.cleanStoryTitle('《Quỷ Bí Chi Chủ》 by Ái Tiềm Thủy Đích Ô Tặc.txt'), 'Quỷ Bí Chi Chủ');
+
+      expect(StoryImportService.parseChapterNumber('1'), 1);
+      expect(StoryImportService.parseChapterNumber('001'), 1);
+      expect(StoryImportService.parseChapterNumber('一'), 1);
+      expect(StoryImportService.parseChapterNumber('十二'), 12);
+      expect(StoryImportService.parseChapterNumber('二十五'), 25);
+      expect(StoryImportService.parseChapterNumber('一百零五'), 105);
+      expect(StoryImportService.parseChapterNumber('一千二百三十四'), 1234);
+    });
+
+    test('Phân tích file TXT thực tế từ Downloads nếu có', () {
+      final sampleFile = File(r'C:\Users\Gum\Downloads\恶魔疯缠：宝贝，今天又要杀我吗 作者：时凌.txt');
+      if (sampleFile.existsSync()) {
+        final bytes = sampleFile.readAsBytesSync();
+        final result = service.importFromTxt(bytes, sampleFile.path, sourcePath: sampleFile.path);
+
+        expect(result.storyTitle, '恶魔疯缠：宝贝，今天又要杀我吗');
+        expect(result.chapters.length, 41);
+        expect(result.chapters[0].chapterNumber, 1);
+        expect(result.chapters[0].chapterTitle, 'Chương 1: 下次再见，吃干抹尽');
+        expect(result.chapters[0].content.length, greaterThan(100));
+        expect(result.chapters[1].chapterNumber, 2);
+        expect(result.chapters[1].chapterTitle, 'Chương 2: 是蛇啊~');
+        expect(result.chapters[1].content.length, greaterThan(100));
+      }
     });
   });
 

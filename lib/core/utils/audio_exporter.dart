@@ -25,7 +25,7 @@ class AudioExporter {
     final dir = await getAudioStorageDirectory();
     // Chuẩn hóa tên file an toàn cho hệ điều hành
     String safeStory = storyTitle
-        .replaceAll(RegExp(r'[^\w\s\u00C0-\u1EF9-]'), '')
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '')
         .replaceAll(RegExp(r'\s+'), '_')
         .trim();
     if (safeStory.isEmpty) safeStory = 'Truyen';
@@ -47,7 +47,7 @@ class AudioExporter {
   }) async {
     final dir = await getAudioStorageDirectory();
     String safeStory = storyTitle
-        .replaceAll(RegExp(r'[^\w\s\u00C0-\u1EF9-]'), '')
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '')
         .replaceAll(RegExp(r'\s+'), '_')
         .trim();
     if (safeStory.isEmpty) safeStory = 'Truyen';

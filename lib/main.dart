@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'core/theme/app_theme.dart';
+import 'core/utils/app_toast.dart';
 import 'providers/settings_provider.dart';
 import 'providers/player_state_provider.dart';
 import 'providers/app_state_provider.dart';
@@ -51,6 +52,8 @@ class StorySumApp extends StatelessWidget {
 
     return MaterialApp(
       title: 'StorySum',
+      navigatorKey: rootNavigatorKey,
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.getThemeData(settings.appThemeMode, context),
       home: const SplashScreen(),

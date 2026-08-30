@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import '../models/tts_synthesis_result.dart';
 import '../models/voice_model.dart';
 import 'onnx_tts_service.dart';
@@ -64,16 +64,48 @@ class UnifiedTtsService {
         );
 
       case VoiceEngineType.tiktokTts:
-        return await tikTokTtsService.synthesize(
-          text: text,
-          voice: voice,
-          storyTitle: storyTitle,
-          chapterNumber: chapterNumber,
-          audioType: audioType,
-          outputFilePath: outputFilePath,
-          speed: speed,
-          onProgress: onProgress,
-        );
+        try {
+          return await tikTokTtsService.synthesize(
+            text: text,
+            voice: voice,
+            storyTitle: storyTitle,
+            chapterNumber: chapterNumber,
+            audioType: audioType,
+            outputFilePath: outputFilePath,
+            speed: speed,
+            onProgress: onProgress,
+          );
+        } catch (e) {
+          final fallbackVoice = voice.gender == 'Nam'
+              ? const VoiceModel(
+                  id: 'edge-vi-VN-NamMinhNeural',
+                  name: 'Nam Minh (Edge)',
+                  shortDescription: 'Edge TTS Nam',
+                  engine: VoiceEngineType.edgeTts,
+                  locale: 'vi-VN',
+                  gender: 'Nam',
+                  speakerId: 'vi-VN-NamMinhNeural',
+                )
+              : const VoiceModel(
+                  id: 'edge-vi-VN-HoaiMyNeural',
+                  name: 'Hoài My (Edge)',
+                  shortDescription: 'Edge TTS Nữ',
+                  engine: VoiceEngineType.edgeTts,
+                  locale: 'vi-VN',
+                  gender: 'Nữ',
+                  speakerId: 'vi-VN-HoaiMyNeural',
+                );
+          return await edgeTtsService.synthesize(
+            text: text,
+            voice: fallbackVoice,
+            storyTitle: storyTitle,
+            chapterNumber: chapterNumber,
+            audioType: audioType,
+            outputFilePath: outputFilePath,
+            speed: speed,
+            onProgress: onProgress,
+          );
+        }
     }
   }
 }

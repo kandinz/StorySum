@@ -9,11 +9,20 @@ import '../core/utils/text_normalizer.dart';
 class CrawlerService {
   final Map<String, String> _headers = {
     'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
     'Accept':
-        'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,application/json,*/*;q=0.8',
+        'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
     'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Sec-Ch-Ua': '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
     'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
   };
 
   /// Bộ nhớ đệm DNS phân giải qua DNS-over-HTTPS (DoH)
@@ -25,9 +34,12 @@ class CrawlerService {
     try {
       final uri = Uri.parse('https://dns.google/resolve?name=$host&type=A');
       final client = HttpClient();
+      client.badCertificateCallback = ((cert, h, port) => true);
       final req = await client.getUrl(uri).timeout(const Duration(seconds: 4));
       final resp = await req.close().timeout(const Duration(seconds: 4));
-      final body = await resp.transform(utf8.decoder).join();
+      final bytes = await resp.fold<List<int>>([], (p, e) => p..addAll(e));
+      final body = utf8.decode(bytes, allowMalformed: true);
+      client.close(force: true);
       final json = jsonDecode(body);
       final answers = json['Answer'] as List?;
       if (answers != null && answers.isNotEmpty) {
@@ -47,7 +59,10 @@ class CrawlerService {
   }
 
   /// Tải nội dung web an toàn, tự động giải nén Gzip/Deflate, timeouts và DoH fallback
-  Future<String> fetchUrlContent(String url, {Map<String, String>? customHeaders}) async {
+  Future<String> fetchUrlContent(String url, {Map<String, String>? customHeaders, int redirectCount = 0}) async {
+    if (redirectCount > 8) {
+      throw Exception('Vượt quá số lần chuyển hướng (Redirect loop)');
+    }
     final normalized = normalizeUrl(url);
     final uri = Uri.parse(normalized);
     final mergedHeaders = {
@@ -55,23 +70,38 @@ class CrawlerService {
       if (customHeaders != null) ...customHeaders,
     };
 
-    // 1. Thử tải qua HttpClient với autoUncompress = true & Connection: close
+    // 1. Thử tải qua HttpClient với autoUncompress = true & badCertificateCallback
     try {
       final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 10);
+      client.connectionTimeout = const Duration(seconds: 12);
       client.autoUncompress = true;
       client.badCertificateCallback = ((cert, host, port) => true);
 
       try {
-        final req = await client.getUrl(uri).timeout(const Duration(seconds: 10));
+        final req = await client.getUrl(uri).timeout(const Duration(seconds: 12));
         for (var entry in mergedHeaders.entries) {
           req.headers.set(entry.key, entry.value);
         }
-        req.headers.set('Connection', 'close');
+        req.followRedirects = true;
+        req.maxRedirects = 8;
 
-        final resp = await req.close().timeout(const Duration(seconds: 12));
-        if (resp.statusCode == 200) {
-          return await resp.transform(utf8.decoder).join();
+        final resp = await req.close().timeout(const Duration(seconds: 15));
+        
+        // Xử lý chuyển hướng thủ công nếu cần
+        if ((resp.statusCode == 301 || resp.statusCode == 302 || resp.statusCode == 307 || resp.statusCode == 308) &&
+            resp.headers.value('location') != null) {
+          final loc = resp.headers.value('location')!;
+          final redirectUri = Uri.parse(loc).isAbsolute ? loc : uri.resolve(loc).toString();
+          return await fetchUrlContent(redirectUri, customHeaders: customHeaders, redirectCount: redirectCount + 1);
+        }
+
+        if (resp.statusCode >= 200 && resp.statusCode < 300) {
+          final bytes = await resp.fold<List<int>>([], (p, e) => p..addAll(e));
+          try {
+            return utf8.decode(bytes, allowMalformed: true);
+          } catch (_) {
+            return latin1.decode(bytes);
+          }
         }
       } finally {
         client.close(force: true);
@@ -84,9 +114,9 @@ class CrawlerService {
       final targetIp = await resolveDoH(host);
       if (targetIp != null && targetIp != host) {
         final client = HttpClient();
-        client.connectionTimeout = const Duration(seconds: 10);
+        client.connectionTimeout = const Duration(seconds: 12);
         client.autoUncompress = true;
-        client.badCertificateCallback = ((cert, host, port) => true);
+        client.badCertificateCallback = ((cert, h, port) => true);
 
         try {
           final port = uri.hasPort ? uri.port : (uri.scheme == 'http' ? 80 : 443);
@@ -98,16 +128,17 @@ class CrawlerService {
             path: path,
           );
 
-          final req = await client.getUrl(directUri).timeout(const Duration(seconds: 10));
+          final req = await client.getUrl(directUri).timeout(const Duration(seconds: 12));
           for (var entry in mergedHeaders.entries) {
             req.headers.set(entry.key, entry.value);
           }
           req.headers.set('Host', host);
-          req.headers.set('Connection', 'close');
+          req.followRedirects = true;
 
-          final resp = await req.close().timeout(const Duration(seconds: 12));
-          if (resp.statusCode == 200) {
-            return await resp.transform(utf8.decoder).join();
+          final resp = await req.close().timeout(const Duration(seconds: 15));
+          if (resp.statusCode >= 200 && resp.statusCode < 300) {
+            final bytes = await resp.fold<List<int>>([], (p, e) => p..addAll(e));
+            return utf8.decode(bytes, allowMalformed: true);
           }
         } finally {
           client.close(force: true);
@@ -117,17 +148,17 @@ class CrawlerService {
 
     // 3. Fallback cuối: http.get tiêu chuẩn
     try {
-      final resp = await http.get(uri, headers: mergedHeaders).timeout(const Duration(seconds: 10));
-      if (resp.statusCode == 200) {
+      final resp = await http.get(uri, headers: mergedHeaders).timeout(const Duration(seconds: 12));
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
         try {
-          return utf8.decode(resp.bodyBytes);
+          return utf8.decode(resp.bodyBytes, allowMalformed: true);
         } catch (_) {
           return resp.body;
         }
       }
       throw Exception('Mã phản hồi máy chủ: ${resp.statusCode}');
     } catch (e) {
-      throw Exception('Không thể kết nối đến máy chủ ($url): $e');
+      throw Exception('Không thể kết nối đến máy chủ truyện: $e');
     }
   }
 
@@ -429,7 +460,13 @@ class CrawlerService {
         wordCount: wordCount,
       );
     } catch (e) {
-      throw Exception('Crawl thất bại [Chương ${chapterNumber ?? '?'}]: ${e.toString()}');
+      String msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      if (msg.contains('Failed host lookup') || msg.contains('SocketException')) {
+        msg = 'Không thể kết nối Internet hoặc website không phản hồi';
+      } else if (msg.contains('TimeoutException') || msg.contains('timed out')) {
+        msg = 'Hết thời gian chờ phản hồi từ máy chủ truyện';
+      }
+      throw Exception('Tải thất bại [Chương ${chapterNumber ?? '?'}]: $msg');
     }
   }
 

@@ -5,7 +5,7 @@ Future<AudioHandler> initAudioService() async {
   return await AudioService.init(
     builder: () => MyAudioHandler(),
     config: AudioServiceConfig(
-      androidNotificationChannelId: 'com.ktool.app_story.audio',
+      androidNotificationChannelId: 'com.storysum.audio',
       androidNotificationChannelName: 'StorySum Audio Service',
       androidNotificationOngoing: true,
       androidStopForegroundOnPause: false,
@@ -43,6 +43,16 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _bgmPlayer.setLoopMode(LoopMode.all);
     _bgmPlayer.setVolume(_bgmVolume);
 
+    // Chuyển đổi sự kiện BGM player để cập nhật preview state
+    _bgmPlayer.playbackEventStream.listen((event) {
+      if (_bgmPlayer.processingState == ProcessingState.idle ||
+          _bgmPlayer.processingState == ProcessingState.completed) {
+        if (_isPreviewingBgm && !_bgmPlayer.playing) {
+          _isPreviewingBgm = false;
+        }
+      }
+    });
+
     // Chuyển đổi sự kiện player sang AudioService playback state
     _player.playbackEventStream.listen((PlaybackEvent event) {
       final playing = _player.playing;
@@ -69,7 +79,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           ProcessingState.buffering: AudioProcessingState.buffering,
           ProcessingState.ready: AudioProcessingState.ready,
           ProcessingState.completed: AudioProcessingState.completed,
-        }[_player.processingState]!,
+        }[_player.processingState] ?? AudioProcessingState.idle,
         playing: playing,
         updatePosition: _player.position,
         bufferedPosition: _player.bufferedPosition,
@@ -88,7 +98,12 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       if (_isBgmLocal) {
         await _bgmPlayer.setFilePath(_currentBgmUrl!);
       } else {
-        await _bgmPlayer.setUrl(_currentBgmUrl!);
+        await _bgmPlayer.setUrl(
+          _currentBgmUrl!,
+          headers: const {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        );
       }
       await _bgmPlayer.setLoopMode(LoopMode.all);
       await _bgmPlayer.setVolume(_bgmVolume);
@@ -142,7 +157,12 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       if (isLocal) {
         await _bgmPlayer.setFilePath(url);
       } else {
-        await _bgmPlayer.setUrl(url);
+        await _bgmPlayer.setUrl(
+          url,
+          headers: const {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        );
       }
       await _bgmPlayer.setLoopMode(LoopMode.all);
       await _bgmPlayer.setVolume(_bgmVolume);
@@ -154,17 +174,28 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   Future<void> playBgmPreview(String url, {bool isLocal = false}) async {
+    if (url.trim().isEmpty) return;
     try {
       _isPreviewingBgm = true;
+      await _bgmPlayer.stop();
       if (isLocal) {
         await _bgmPlayer.setFilePath(url);
       } else {
-        await _bgmPlayer.setUrl(url);
+        await _bgmPlayer.setUrl(
+          url,
+          headers: const {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        );
       }
       await _bgmPlayer.setLoopMode(LoopMode.all);
-      await _bgmPlayer.setVolume(_bgmVolume);
+      await _bgmPlayer.setVolume(_bgmVolume > 0.05 ? _bgmVolume : 0.4);
       await _bgmPlayer.play();
-    } catch (_) {}
+    } catch (e) {
+      _isPreviewingBgm = false;
+      print('Lỗi nghe thử BGM: $e');
+      rethrow;
+    }
   }
 
   Future<void> stopBgmPreview() async {
@@ -175,7 +206,12 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         if (_isBgmLocal) {
           await _bgmPlayer.setFilePath(_currentBgmUrl!);
         } else {
-          await _bgmPlayer.setUrl(_currentBgmUrl!);
+          await _bgmPlayer.setUrl(
+            _currentBgmUrl!,
+            headers: const {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+          );
         }
         await _bgmPlayer.setLoopMode(LoopMode.all);
         await _bgmPlayer.setVolume(_bgmVolume);

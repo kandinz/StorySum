@@ -200,29 +200,66 @@ class DatabaseHelper {
     return result.map((json) => ChapterModel.fromMap(json)).toList();
   }
 
-  Future<void> insertChaptersBatch(List<ChapterModel> chapters) async {
+  Future<void> insertChaptersBatch(
+    List<ChapterModel> chapters, {
+    void Function(int current, int total)? onProgress,
+  }) async {
     if (chapters.isEmpty) return;
     final db = await database;
-    final batch = db.batch();
-    for (final chapter in chapters) {
-      batch.delete(
-        AppConstants.tableChapters,
-        where: 'story_title = ? AND chapter_number = ?',
-        whereArgs: [chapter.storyTitle, chapter.chapterNumber],
-      );
-      batch.insert(
-        AppConstants.tableChapters,
-        chapter.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+    final storyTitle = chapters.first.storyTitle;
+    await db.delete(
+      AppConstants.tableChapters,
+      where: 'story_title = ?',
+      whereArgs: [storyTitle],
+    );
+
+    const chunkSize = 500;
+    for (int i = 0; i < chapters.length; i += chunkSize) {
+      final end = (i + chunkSize < chapters.length) ? i + chunkSize : chapters.length;
+      final chunk = chapters.sublist(i, end);
+      final batch = db.batch();
+      for (final chapter in chunk) {
+        batch.insert(
+          AppConstants.tableChapters,
+          chapter.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+      onProgress?.call(end, chapters.length);
     }
-    await batch.commit(noResult: true);
   }
 
   Future<List<ChapterModel>> getChaptersByStory(String storyTitle) async {
     final db = await database;
     final result = await db.query(
       AppConstants.tableChapters,
+      where: 'story_title = ?',
+      whereArgs: [storyTitle],
+      orderBy: 'chapter_number ASC',
+    );
+    return result.map((json) => ChapterModel.fromMap(json)).toList();
+  }
+
+  /// Nạp danh sách chương nhẹ cho một truyện cụ thể (không nạp cột content để tối ưu RAM và tốc độ)
+  Future<List<ChapterModel>> getLightweightChaptersByStory(String storyTitle) async {
+    final db = await database;
+    final result = await db.query(
+      AppConstants.tableChapters,
+      columns: [
+        'id',
+        'story_title',
+        'chapter_title',
+        'chapter_number',
+        'source_url',
+        'word_count',
+        'created_at',
+        'last_played_sentence',
+        'last_played_summary_index',
+        'last_played_content_index',
+        'last_played_source',
+        'last_played_at',
+      ],
       where: 'story_title = ?',
       whereArgs: [storyTitle],
       orderBy: 'chapter_number ASC',
@@ -309,23 +346,34 @@ class DatabaseHelper {
     );
   }
 
-  Future<void> insertAudiosBatch(List<SavedAudioItem> audios) async {
+  Future<void> insertAudiosBatch(
+    List<SavedAudioItem> audios, {
+    void Function(int current, int total)? onProgress,
+  }) async {
     if (audios.isEmpty) return;
     final db = await database;
-    final batch = db.batch();
-    for (final audio in audios) {
-      batch.delete(
-        AppConstants.tableAudios,
-        where: 'story_title = ? AND chapter_number = ?',
-        whereArgs: [audio.storyTitle, audio.chapterNumber],
-      );
-      batch.insert(
-        AppConstants.tableAudios,
-        audio.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+    final storyTitle = audios.first.storyTitle;
+    await db.delete(
+      AppConstants.tableAudios,
+      where: 'story_title = ?',
+      whereArgs: [storyTitle],
+    );
+
+    const chunkSize = 500;
+    for (int i = 0; i < audios.length; i += chunkSize) {
+      final end = (i + chunkSize < audios.length) ? i + chunkSize : audios.length;
+      final chunk = audios.sublist(i, end);
+      final batch = db.batch();
+      for (final audio in chunk) {
+        batch.insert(
+          AppConstants.tableAudios,
+          audio.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+      onProgress?.call(end, audios.length);
     }
-    await batch.commit(noResult: true);
   }
 
   Future<List<SavedAudioItem>> getAllSavedAudios() async {

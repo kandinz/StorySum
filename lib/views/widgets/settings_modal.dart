@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path/path.dart' as p;
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/app_toast.dart';
 import '../../models/voice_model.dart';
 import '../../models/ai_provider_model.dart';
 import '../../models/bgm_track_model.dart';
@@ -17,17 +18,17 @@ import '../../providers/app_state_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/player_state_provider.dart';
 
-class KtoolSettingsModal extends StatefulWidget {
+class SettingsModal extends StatefulWidget {
   final bool asPage;
   final int initialTabIndex;
 
-  const KtoolSettingsModal({
+  const SettingsModal({
     Key? key,
     this.asPage = false,
     this.initialTabIndex = 0,
   }) : super(key: key);
 
-  const KtoolSettingsModal.page({
+  const SettingsModal.page({
     Key? key,
     this.initialTabIndex = 0,
   }) : asPage = true, super(key: key);
@@ -37,37 +38,19 @@ class KtoolSettingsModal extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => KtoolSettingsModal(initialTabIndex: initialTabIndex),
+      builder: (context) => SettingsModal(initialTabIndex: initialTabIndex),
     );
   }
 
   @override
-  State<KtoolSettingsModal> createState() => _KtoolSettingsModalState();
+  State<SettingsModal> createState() => _SettingsModalState();
 }
 
-class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
+class _SettingsModalState extends State<SettingsModal> {
   late int _selectedTabIndex; // 0: Audio & Truyện, 1: Dịch & Tóm tắt, 2: Donate
 
   late TextEditingController _summaryPromptController;
   late TextEditingController _translatePromptController;
-  String? _toastMessage;
-  Timer? _toastTimer;
-
-  void _showModalToast(String message) {
-    _toastTimer?.cancel();
-    if (mounted) {
-      setState(() {
-        _toastMessage = message;
-      });
-      _toastTimer = Timer(const Duration(seconds: 1), () {
-        if (mounted) {
-          setState(() {
-            _toastMessage = null;
-          });
-        }
-      });
-    }
-  }
 
   @override
   void initState() {
@@ -80,8 +63,17 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
   }
 
   @override
+  void didUpdateWidget(covariant SettingsModal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTabIndex != widget.initialTabIndex) {
+      setState(() {
+        _selectedTabIndex = widget.initialTabIndex;
+      });
+    }
+  }
+
+  @override
   void dispose() {
-    _toastTimer?.cancel();
     _summaryPromptController.dispose();
     _translatePromptController.dispose();
     try {
@@ -186,39 +178,6 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
             ),
           ],
         ),
-
-        // Thông báo toast nhỏ gọn nằm trên popup modal
-        if (_toastMessage != null)
-          Positioned(
-            bottom: 24,
-            left: 20,
-            right: 20,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: colors.elevatedBackground,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: colors.border, width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  _toastMessage!,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: colors.textPrimary,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-              ),
-            ),
-          ),
       ],
     );
 
@@ -509,10 +468,31 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
                     label: player.isPreviewingBgm ? 'Dừng thử' : 'Nghe thử',
                     icon: player.isPreviewingBgm ? Icons.stop_rounded : Icons.play_arrow_rounded,
                     onTap: () async {
-                      if (player.isPreviewingBgm) {
-                        await player.stopBgmPreview();
-                      } else {
-                        await player.playBgmPreview(settings.currentBgmTrack.url, isLocal: settings.currentBgmTrack.isLocal);
+                      try {
+                        if (player.isPreviewingBgm) {
+                          await player.stopBgmPreview();
+                        } else {
+                          final track = settings.currentBgmTrack;
+                          if (track.url.trim().isEmpty) {
+                            if (context.mounted) {
+                              AppToast.showError(
+                                context,
+                                'Chưa chọn bài nhạc nền hoặc đường dẫn nhạc không hợp lệ.',
+                                title: 'Lỗi Phát Nhạc Nền',
+                              );
+                            }
+                            return;
+                          }
+                          await player.playBgmPreview(track.url, isLocal: track.isLocal);
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          AppToast.showError(
+                            context,
+                            'Không thể phát thử nhạc nền: $e',
+                            title: 'Lỗi Phát Nhạc Nền',
+                          );
+                        }
                       }
                     },
                     colors: colors,
@@ -1029,37 +1009,19 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
         if (context.mounted) {
           final player = Provider.of<PlayerStateProvider>(context, listen: false);
           await appState.onVoiceChanged(settings: settings, player: player);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text('Đã nạp thành công giọng: ${voice.name}')),
-                ],
-              ),
-              backgroundColor: const Color(0xFF10B981),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
+          AppToast.showSuccess(
+            context,
+            'Đã nạp thành công giọng: ${voice.name}',
+            title: 'Nạp Giọng Thành Công',
           );
         }
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline_rounded, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
-                Expanded(child: Text('Lỗi khi nạp file ONNX: $e')),
-              ],
-            ),
-            backgroundColor: const Color(0xFFEF4444),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
+        AppToast.showError(
+          context,
+          'Lỗi khi nạp file ONNX: $e',
+          title: 'Lỗi Nạp Giọng ONNX',
         );
       }
     }
@@ -1336,7 +1298,6 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
 
   Widget _buildVoiceDropdown(BuildContext context, SettingsProvider settings, AppThemeColors colors) {
     final currentVoice = settings.currentVoice;
-    final currentEngineName = currentVoice.engineDisplayName;
 
     return PopupMenuButton<String>(
       onSelected: (val) async {
@@ -1358,20 +1319,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
           final isSelected = voice.id == settings.selectedVoiceId;
           final isCustom = !VoiceModel.defaultVoices.any((dv) => dv.id == voice.id);
           final displayName = voice.name.replaceAll('(ONNX)', '').replaceAll('.onnx', '').trim();
-
-          Color badgeColor;
-          String engineBadgeText = voice.engineDisplayName;
-          switch (voice.engine) {
-            case VoiceEngineType.localOnnx:
-              badgeColor = const Color(0xFF10B981); // Emerald
-              break;
-            case VoiceEngineType.edgeTts:
-              badgeColor = const Color(0xFF6366F1); // Indigo
-              break;
-            case VoiceEngineType.tiktokTts:
-              badgeColor = const Color(0xFFEC4899); // Pink
-              break;
-          }
+          final isLocalOnnx = voice.engine == VoiceEngineType.localOnnx;
 
           return PopupMenuItem<String>(
             value: voice.id,
@@ -1397,23 +1345,25 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: badgeColor.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: badgeColor.withValues(alpha: 0.4), width: 0.8),
-                          ),
-                          child: Text(
-                            isCustom ? 'ONNX Tùy biến' : engineBadgeText,
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.bold,
-                              color: badgeColor,
+                        if (isLocalOnnx) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4), width: 0.8),
+                            ),
+                            child: Text(
+                              isCustom ? 'ONNX Tùy biến' : 'ONNX Offline',
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF10B981),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
@@ -1453,18 +1403,27 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
                       maxLines: 1,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: colors.primary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
+                  if (currentVoice.engine == VoiceEngineType.localOnnx) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4), width: 0.8),
+                      ),
+                      child: Text(
+                        !VoiceModel.defaultVoices.any((dv) => dv.id == currentVoice.id)
+                            ? 'ONNX Tùy biến'
+                            : 'ONNX Offline',
+                        style: const TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF10B981),
+                        ),
+                      ),
                     ),
-                    child: Text(
-                      currentEngineName,
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: colors.primary),
-                    ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -1632,10 +1591,22 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
 
         await settings.addCustomBgmTrack(newTrack);
         await player.setBgmTrack(newTrack.url, isLocal: true);
-        _showModalToast('Đã thêm nhạc nền "$fileName" thành công!');
+        if (context.mounted) {
+          AppToast.showSuccess(
+            context,
+            'Đã thêm nhạc nền "$fileName" thành công!',
+            title: 'Thêm Nhạc Nền',
+          );
+        }
       }
     } catch (e) {
-      _showModalToast('Lỗi chọn file nhạc: $e');
+      if (context.mounted) {
+        AppToast.showError(
+          context,
+          'Lỗi chọn file nhạc: $e',
+          title: 'Lỗi Nhạc Nền',
+        );
+      }
     }
   }
 
@@ -2701,7 +2672,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
                     IconButton(
                       onPressed: () {
                         Clipboard.setData(const ClipboardData(text: '0929672867'));
-                        _showModalToast('Đã sao chép số tài khoản');
+                        AppToast.showSuccess(context, 'Đã sao chép số tài khoản vào clipboard');
                       },
                       icon: Icon(
                         Icons.copy_rounded,
@@ -2788,7 +2759,9 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
       }
 
       if (savedPath != null) {
-        _showModalToast('Đã tải thành công');
+        if (context.mounted) {
+          AppToast.showSuccess(context, 'Đã lưu mã QR thành công!');
+        }
       } else {
         // Fallback lưu vào temp và gọi share sheet
         final tempDir = await getTemporaryDirectory();
@@ -2801,10 +2774,14 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
           text: 'Mã QR Donate StorySum',
         );
 
-        _showModalToast('Đã tải thành công');
+        if (context.mounted) {
+          AppToast.showSuccess(context, 'Đã chuẩn bị ảnh mã QR!');
+        }
       }
     } catch (e) {
-      _showModalToast('Lỗi khi tải ảnh');
+      if (context.mounted) {
+        AppToast.showError(context, 'Lỗi khi tải ảnh: $e');
+      }
     }
   }
 
@@ -2823,13 +2800,7 @@ class _KtoolSettingsModalState extends State<KtoolSettingsModal> {
       );
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi khi chia sẻ ảnh: $e'),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.showError(context, 'Lỗi khi chia sẻ ảnh: $e');
       }
     }
   }

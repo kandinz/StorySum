@@ -43,51 +43,17 @@ class VoiceModel {
   }
 
   static List<VoiceModel> get defaultVoices => [
-    // 1. Nguồn: ONNX Offline (Sherpa ONNX)
+    // 1. Nguồn: TikTok TTS (Online WebSocket)
     const VoiceModel(
-      id: 'onnx-ngoc-huyen',
-      name: 'Ngọc Huyền',
-      shortDescription: 'Giọng Nữ Offline (Sherpa ONNX)',
+      id: 'tiktok-vi_female_huong',
+      name: 'Giọng nữ phổ thông',
+      shortDescription: 'TikTok - Giọng Nữ Chuẩn Phổ Thông',
       gender: 'Nữ',
       locale: 'vi-VN',
-      engine: VoiceEngineType.localOnnx,
-      localModelPath: 'assets/onnx/Ngọc Huyền.onnx',
-      localConfigPath: 'assets/onnx/tokens.txt',
-    ),
-    const VoiceModel(
-      id: 'onnx-bong-cuc',
-      name: 'Bông Cúc',
-      shortDescription: 'Giọng Nữ Offline (Sherpa ONNX)',
-      gender: 'Nữ',
-      locale: 'vi-VN',
-      engine: VoiceEngineType.localOnnx,
-      localModelPath: 'assets/onnx/Bông Cúc.onnx',
-      localConfigPath: 'assets/onnx/tokens.txt',
-    ),
-
-    // 2. Nguồn: Edge TTS (Online)
-    const VoiceModel(
-      id: 'edge-vi-VN-HoaiMyNeural',
-      name: 'Hoài My',
-      shortDescription: 'Edge TTS - Giọng Nữ Truyền Cảm',
-      gender: 'Nữ',
-      locale: 'vi-VN',
-      engine: VoiceEngineType.edgeTts,
-      speakerId: 'vi-VN-HoaiMyNeural',
+      engine: VoiceEngineType.tiktokTts,
+      speakerId: 'vi_female_huong',
       isDownloaded: true,
     ),
-    const VoiceModel(
-      id: 'edge-vi-VN-NamMinhNeural',
-      name: 'Nam Minh',
-      shortDescription: 'Edge TTS - Giọng Nam Trầm Ấm',
-      gender: 'Nam',
-      locale: 'vi-VN',
-      engine: VoiceEngineType.edgeTts,
-      speakerId: 'vi-VN-NamMinhNeural',
-      isDownloaded: true,
-    ),
-
-    // 3. Nguồn: TikTok TTS (Online WebSocket)
     const VoiceModel(
       id: 'tiktok-BV074_streaming',
       name: 'Cô gái hoạt ngôn',
@@ -118,15 +84,49 @@ class VoiceModel {
       speakerId: 'BV075_streaming',
       isDownloaded: true,
     ),
+
+    // 2. Nguồn: Edge TTS (Online)
     const VoiceModel(
-      id: 'tiktok-vi_female_huong',
-      name: 'Giọng nữ phổ thông',
-      shortDescription: 'TikTok - Giọng Nữ Chuẩn Phổ Thông',
+      id: 'edge-vi-VN-HoaiMyNeural',
+      name: 'Hoài My',
+      shortDescription: 'Edge TTS - Giọng Nữ Truyền Cảm',
       gender: 'Nữ',
       locale: 'vi-VN',
-      engine: VoiceEngineType.tiktokTts,
-      speakerId: 'vi_female_huong',
+      engine: VoiceEngineType.edgeTts,
+      speakerId: 'vi-VN-HoaiMyNeural',
       isDownloaded: true,
+    ),
+    const VoiceModel(
+      id: 'edge-vi-VN-NamMinhNeural',
+      name: 'Nam Minh',
+      shortDescription: 'Edge TTS - Giọng Nam Trầm Ấm',
+      gender: 'Nam',
+      locale: 'vi-VN',
+      engine: VoiceEngineType.edgeTts,
+      speakerId: 'vi-VN-NamMinhNeural',
+      isDownloaded: true,
+    ),
+
+    // 3. Nguồn: ONNX Offline (Sherpa ONNX)
+    const VoiceModel(
+      id: 'onnx-ngoc-huyen',
+      name: 'Ngọc Huyền',
+      shortDescription: 'Giọng Nữ Offline (Sherpa ONNX)',
+      gender: 'Nữ',
+      locale: 'vi-VN',
+      engine: VoiceEngineType.localOnnx,
+      localModelPath: 'assets/onnx/Ngọc Huyền.onnx',
+      localConfigPath: 'assets/onnx/tokens.txt',
+    ),
+    const VoiceModel(
+      id: 'onnx-bong-cuc',
+      name: 'Bông Cúc',
+      shortDescription: 'Giọng Nữ Offline (Sherpa ONNX)',
+      gender: 'Nữ',
+      locale: 'vi-VN',
+      engine: VoiceEngineType.localOnnx,
+      localModelPath: 'assets/onnx/Bông Cúc.onnx',
+      localConfigPath: 'assets/onnx/tokens.txt',
     ),
   ];
 

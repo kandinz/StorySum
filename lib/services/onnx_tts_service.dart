@@ -123,9 +123,9 @@ class OnnxTtsService {
     String text = TextNormalizer.normalize(input);
 
     // 2. Loại bỏ các ký tự đặc biệt, toán học, tiền tệ, biểu tượng đồ họa còn sót lại
-    // Chỉ giữ lại: chữ cái tiếng Việt, số, khoảng trắng và các dấu câu TTS an toàn (. , ! ? : ; ' " -)
+    // Bảo toàn: chữ cái (tiếng Việt, CJK, Latin), số, khoảng trắng và các dấu câu TTS an toàn (. , ! ? : ; ' " - ~)
     text = text.replaceAll(
-      RegExp(r'''[^\sa-zA-Z0-9\u00C0-\u1EF9.,!?:;'"\-]'''),
+      RegExp(r'''[^\sa-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF.,!?:;'"\-~]'''),
       ' ',
     );
 
@@ -150,7 +150,7 @@ class OnnxTtsService {
       if (trimmed.isEmpty) continue;
 
       if (trimmed.length <= maxChunkLength) {
-        if (RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9]').hasMatch(trimmed)) {
+        if (RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(trimmed)) {
           chunks.add(trimmed);
         }
       } else {
@@ -162,19 +162,19 @@ class OnnxTtsService {
           if (candidate.length <= maxChunkLength) {
             current = candidate;
           } else {
-            if (current.isNotEmpty && RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9]').hasMatch(current)) {
+            if (current.isNotEmpty && RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(current)) {
               chunks.add(current);
             }
             current = part;
           }
         }
-        if (current.isNotEmpty && RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9]').hasMatch(current)) {
+        if (current.isNotEmpty && RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(current)) {
           chunks.add(current);
         }
       }
     }
 
-    return chunks.isNotEmpty ? chunks : (RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9]').hasMatch(sanitized) ? [sanitized] : []);
+    return chunks.isNotEmpty ? chunks : (RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(sanitized) ? [sanitized] : []);
   }
 
   /// Nhập file model ONNX từ bộ nhớ ngoài của thiết bị
@@ -196,7 +196,7 @@ class OnnxTtsService {
 
     // Chuẩn hóa tên an toàn cho file hệ thống
     String safeName = name
-        .replaceAll(RegExp(r'[^\w\s\u00C0-\u1EF9-]'), '')
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '')
         .replaceAll(RegExp(r'\s+'), '_')
         .trim();
     if (safeName.isEmpty) {

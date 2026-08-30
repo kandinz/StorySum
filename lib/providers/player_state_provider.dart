@@ -114,6 +114,10 @@ class PlayerStateProvider extends ChangeNotifier {
         notifyListeners();
       }
     });
+
+    playerService.bgmPlayer.playerStateStream.listen((state) {
+      notifyListeners();
+    });
   }
 
   Future<void> playAudio({
@@ -134,12 +138,14 @@ class PlayerStateProvider extends ChangeNotifier {
     _currentSentenceIndex = sentenceIndex;
     _boundaries = boundaries ?? [];
 
-    await playerService.playAudioFile(
-      filePath: filePath,
-      title: title,
-      storyTitle: storyTitle,
-      boundaries: boundaries,
-    );
+    if (_playerService != null) {
+      await _playerService!.playAudioFile(
+        filePath: filePath,
+        title: title,
+        storyTitle: storyTitle,
+        boundaries: boundaries,
+      );
+    }
     notifyListeners();
   }
 
@@ -147,7 +153,9 @@ class PlayerStateProvider extends ChangeNotifier {
     if (resetPause) {
       _isPausedByUser = false;
     }
-    await playerService.stop();
+    if (_playerService != null) {
+      await _playerService!.stop();
+    }
     _isPlaying = false;
     _currentPosition = Duration.zero;
     _currentSentenceIndex = null;
@@ -156,14 +164,18 @@ class PlayerStateProvider extends ChangeNotifier {
 
   Future<void> pause() async {
     _isPausedByUser = true;
-    await playerService.pause();
+    if (_playerService != null) {
+      await _playerService!.pause();
+    }
     _isPlaying = false;
     notifyListeners();
   }
 
   Future<void> play() async {
     _isPausedByUser = false;
-    await playerService.play();
+    if (_playerService != null) {
+      await _playerService!.play();
+    }
     _isPlaying = true;
     notifyListeners();
   }
@@ -176,25 +188,34 @@ class PlayerStateProvider extends ChangeNotifier {
     }
   }
 
-
   Future<void> seek(Duration pos) async {
-    await playerService.seek(pos);
+    if (_playerService != null) {
+      await _playerService!.seek(pos);
+    }
   }
 
   Future<void> forward10() async {
-    await playerService.fastForward();
+    if (_playerService != null) {
+      await _playerService!.fastForward();
+    }
   }
 
   Future<void> rewind10() async {
-    await playerService.rewind();
+    if (_playerService != null) {
+      await _playerService!.rewind();
+    }
   }
 
   Future<void> setSpeed(double speed) async {
-    await playerService.setSpeed(speed);
+    if (_playerService != null) {
+      await _playerService!.setSpeed(speed);
+    }
   }
 
   Future<void> setPitch(double pitch) async {
-    await playerService.setPitch(pitch);
+    if (_playerService != null) {
+      await _playerService!.setPitch(pitch);
+    }
   }
 
   // ==========================================
@@ -205,27 +226,37 @@ class PlayerStateProvider extends ChangeNotifier {
   bool get isPreviewingBgm => _playerService?.isPreviewingBgm ?? false;
 
   Future<void> setBgmEnabled(bool enabled) async {
-    await playerService.setBgmEnabled(enabled);
+    if (_playerService != null) {
+      await _playerService!.setBgmEnabled(enabled);
+    }
     notifyListeners();
   }
 
   Future<void> setBgmVolume(double volume) async {
-    await playerService.setBgmVolume(volume);
+    if (_playerService != null) {
+      await _playerService!.setBgmVolume(volume);
+    }
     notifyListeners();
   }
 
   Future<void> setBgmTrack(String url, {bool isLocal = false}) async {
-    await playerService.setBgmTrack(url, isLocal: isLocal);
+    if (_playerService != null) {
+      await _playerService!.setBgmTrack(url, isLocal: isLocal);
+    }
     notifyListeners();
   }
 
   Future<void> playBgmPreview(String url, {bool isLocal = false}) async {
-    await playerService.playBgmPreview(url, isLocal: isLocal);
+    if (_playerService != null) {
+      await _playerService!.playBgmPreview(url, isLocal: isLocal);
+    }
     notifyListeners();
   }
 
   Future<void> stopBgmPreview() async {
-    await playerService.stopBgmPreview();
+    if (_playerService != null) {
+      await _playerService!.stopBgmPreview();
+    }
     notifyListeners();
   }
 

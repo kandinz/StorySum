@@ -1,20 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/app_toast.dart';
 import '../../models/saved_audio_item.dart';
 import '../../providers/app_state_provider.dart';
 import '../../providers/player_state_provider.dart';
 import '../../providers/settings_provider.dart';
 
 class ChapterListModal extends StatefulWidget {
-  const ChapterListModal({Key? key}) : super(key: key);
+  final VoidCallback? onNavigateToLibrary;
 
-  static void show(BuildContext context) {
+  const ChapterListModal({
+    Key? key,
+    this.onNavigateToLibrary,
+  }) : super(key: key);
+
+  static void show(BuildContext context, {VoidCallback? onNavigateToLibrary}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => const ChapterListModal(),
+      builder: (ctx) => ChapterListModal(onNavigateToLibrary: onNavigateToLibrary),
     );
   }
 
@@ -29,6 +35,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
   final Set<int> _expandedGroups = {};
   bool _hasInitializedExpansion = false;
   bool _hasInitializedUrl = false;
+  bool _isCheckingUrl = false;
 
   @override
   void dispose() {
@@ -56,50 +63,57 @@ class _ChapterListModalState extends State<ChapterListModal> {
     final player = context.watch<PlayerStateProvider>();
     final colors = AppTheme.getColors(settings.appThemeMode, context);
 
-    final storyTitle = appState.currentChapter?.storyTitle.trim().isNotEmpty == true
+    final bool hasValidStory = appState.hasActiveChapter ||
+        (appState.lastPlayedStoryTitle != null && appState.lastPlayedStoryTitle!.trim().isNotEmpty);
+    final String storyTitle = (appState.currentChapter?.storyTitle.trim().isNotEmpty == true)
         ? appState.currentChapter!.storyTitle.trim()
-        : (appState.lastPlayedStoryTitle?.trim().isNotEmpty == true
+        : ((appState.lastPlayedStoryTitle != null && appState.lastPlayedStoryTitle!.trim().isNotEmpty)
             ? appState.lastPlayedStoryTitle!.trim()
-            : 'Truyện hiện tại');
+            : 'Chưa chọn truyện');
+    final bool isStorySelected = hasValidStory && storyTitle != 'Chưa chọn truyện';
 
     // Lọc và hợp nhất danh sách chương của truyện hiện tại từ cả savedAudios và historyChapters
     final Map<int, SavedAudioItem> chapterMap = {};
-    for (final item in appState.savedAudios) {
-      if (AppStateProvider.isSameStory(item.storyTitle, storyTitle)) {
-        chapterMap[item.chapterNumber] = item;
+    if (isStorySelected) {
+      for (final item in appState.savedAudios) {
+        if (AppStateProvider.isSameStory(item.storyTitle, storyTitle)) {
+          chapterMap[item.chapterNumber] = item;
+        }
       }
-    }
-    for (final chap in appState.historyChapters) {
-      if (AppStateProvider.isSameStory(chap.storyTitle, storyTitle) && !chapterMap.containsKey(chap.chapterNumber)) {
-        chapterMap[chap.chapterNumber] = SavedAudioItem(
-          id: 'audio_${chap.id}',
-          title: chap.chapterTitle,
-          storyTitle: storyTitle,
-          chapterNumber: chap.chapterNumber,
-          audioPath: '',
-          content: chap.content,
-          chapterId: chap.id,
-          voiceUsed: settings.currentVoice.name,
-        );
+      for (final chap in appState.historyChapters) {
+        if (AppStateProvider.isSameStory(chap.storyTitle, storyTitle) && !chapterMap.containsKey(chap.chapterNumber)) {
+          chapterMap[chap.chapterNumber] = SavedAudioItem(
+            id: 'audio_${chap.id}',
+            title: chap.chapterTitle,
+            storyTitle: storyTitle,
+            chapterNumber: chap.chapterNumber,
+            audioPath: '',
+            content: chap.content,
+            chapterId: chap.id,
+            voiceUsed: settings.currentVoice.name,
+          );
+        }
       }
     }
 
     final currentStoryAudios = chapterMap.values.toList()
       ..sort((a, b) => a.chapterNumber.compareTo(b.chapterNumber));
 
-    // Khởi tạo URL truyện nếu có
+    // Khởi tạo URL truyện: Nếu chưa chọn truyện thì để trống ô nhập link
     if (!_hasInitializedUrl) {
-      String initialUrl = appState.urlController.text.trim();
-      if (initialUrl.isEmpty && appState.currentChapter?.sourceUrl.isNotEmpty == true) {
-        initialUrl = appState.currentChapter!.sourceUrl;
-      }
-      if (initialUrl.isEmpty) {
-        for (final chap in appState.historyChapters) {
-          if (AppStateProvider.isSameStory(chap.storyTitle, storyTitle) &&
-              chap.sourceUrl.isNotEmpty &&
-              !chap.sourceUrl.startsWith('file://')) {
-            initialUrl = chap.sourceUrl;
-            break;
+      String initialUrl = '';
+      if (isStorySelected) {
+        if (appState.currentChapter?.sourceUrl.isNotEmpty == true &&
+            !appState.currentChapter!.sourceUrl.startsWith('file://')) {
+          initialUrl = appState.currentChapter!.sourceUrl;
+        } else {
+          for (final chap in appState.historyChapters) {
+            if (AppStateProvider.isSameStory(chap.storyTitle, storyTitle) &&
+                chap.sourceUrl.isNotEmpty &&
+                !chap.sourceUrl.startsWith('file://')) {
+              initialUrl = chap.sourceUrl;
+              break;
+            }
           }
         }
       }
@@ -196,14 +210,16 @@ class _ChapterListModalState extends State<ChapterListModal> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Chương mới nhất: ${currentStoryAudios.isNotEmpty ? currentStoryAudios.last.chapterNumber : currentChapterNum} • Đang đọc: Chương $currentChapterNum',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colors.textSecondary,
+                          if (isStorySelected) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              'Chương mới nhất: ${currentStoryAudios.isNotEmpty ? currentStoryAudios.last.chapterNumber : currentChapterNum} • Chương đang đọc: $currentChapterNum',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colors.textSecondary,
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ),
@@ -267,19 +283,23 @@ class _ChapterListModalState extends State<ChapterListModal> {
             padding: const EdgeInsets.fromLTRB(10, 4, 6, 4),
             child: Row(
               children: [
-                Icon(Icons.link_rounded, size: 18, color: colors.primary),
+                Icon(Icons.link_rounded, size: 18, color: isStorySelected ? colors.primary : colors.textMuted),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _urlController,
+                    enabled: isStorySelected,
                     textAlignVertical: TextAlignVertical.center,
                     style: TextStyle(fontSize: 12.5, color: colors.textPrimary),
                     decoration: InputDecoration(
-                      hintText: 'Dán link truyện để tải thêm chương...',
+                      hintText: isStorySelected
+                          ? 'Dán link truyện để tải thêm chương...'
+                          : 'Chọn một truyện để kích hoạt tải thêm chương',
                       hintStyle: TextStyle(color: colors.textMuted, fontSize: 12),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 8),
                     ),
@@ -292,51 +312,166 @@ class _ChapterListModalState extends State<ChapterListModal> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isCrawlingThisStory ? Colors.redAccent : colors.primary,
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: colors.border.withValues(alpha: 0.5),
+                      disabledForegroundColor: colors.textMuted,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                     ),
-                    icon: Icon(
-                      isCrawlingThisStory ? Icons.stop_rounded : Icons.download_rounded,
-                      size: 15,
-                    ),
+                    icon: _isCheckingUrl
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Icon(
+                            isCrawlingThisStory ? Icons.stop_rounded : Icons.download_rounded,
+                            size: 15,
+                          ),
                     label: Text(
-                      isCrawlingThisStory ? 'Dừng tải' : 'Tải chương mới',
+                      _isCheckingUrl
+                          ? 'Đang kiểm tra...'
+                          : isCrawlingThisStory
+                              ? 'Dừng tải'
+                              : 'Tải chương mới',
                       style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
                     ),
-                    onPressed: () async {
-                      if (isCrawlingThisStory) {
-                        appState.stopBackgroundCrawl();
-                        return;
-                      }
+                    onPressed: (_isCheckingUrl || (!isStorySelected && !isCrawlingThisStory))
+                        ? null
+                        : () async {
+                            if (isCrawlingThisStory) {
+                              appState.stopBackgroundCrawl();
+                              return;
+                            }
 
-                      final inputUrl = _urlController.text.trim();
-                      if (inputUrl.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Vui lòng nhập link truyện hợp lệ!'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                        return;
-                      }
+                            final inputUrl = _urlController.text.trim();
+                            if (inputUrl.isEmpty) {
+                              AppToast.showWarning(
+                                context,
+                                'Vui lòng nhập link truyện hợp lệ!',
+                              );
+                              return;
+                            }
 
-                      // Ưu tiên tải các chương lớn hơn chương đang đọc trước (currentChapterNum + 1)
-                      int nextStartChapter = currentChapterNum + 1;
-                      if (currentStoryAudios.isNotEmpty) {
-                        final existingNums = currentStoryAudios.map((c) => c.chapterNumber).toSet();
-                        if (!existingNums.contains(currentChapterNum)) {
-                          nextStartChapter = currentChapterNum;
-                        }
-                      }
+                            if (!isStorySelected) {
+                              AppToast.showWarning(
+                                context,
+                                'Vui lòng chọn hoặc mở một truyện trước khi tải chương mới!',
+                              );
+                              return;
+                            }
 
-                      appState.startBackgroundStoryCrawl(
-                        baseUrl: inputUrl,
-                        storyTitle: storyTitle,
-                        settings: settings,
-                        startChapter: nextStartChapter,
-                      );
-                    },
+                            // Ưu tiên tải các chương lớn hơn chương đang đọc trước (currentChapterNum + 1)
+                            int nextStartChapter = currentChapterNum + 1;
+                            if (currentStoryAudios.isNotEmpty) {
+                              final existingNums = currentStoryAudios.map((c) => c.chapterNumber).toSet();
+                              if (!existingNums.contains(currentChapterNum)) {
+                                nextStartChapter = currentChapterNum;
+                              }
+                            }
+
+                            // Kiểm tra xem tên truyện trong URL có khớp với truyện đang chọn không
+                            setState(() => _isCheckingUrl = true);
+                            try {
+                              final probedChapter = await appState.crawlerService.fetchChapter(
+                                baseUrl: inputUrl,
+                                chapterNumber: nextStartChapter,
+                              );
+                              final crawledTitle = probedChapter.storyTitle.trim();
+                              final targetTitle = storyTitle.trim();
+
+                              if (!AppStateProvider.isSameStory(crawledTitle, targetTitle)) {
+                                if (context.mounted) {
+                                  setState(() => _isCheckingUrl = false);
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      backgroundColor: colors.cardBackground,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                      title: Row(
+                                        children: const [
+                                          Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 24),
+                                          SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'Tên Truyện Không Khớp',
+                                              style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      content: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Link bạn vừa nhập thuộc về truyện:',
+                                            style: TextStyle(fontSize: 12.5, color: colors.textSecondary),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            crawledTitle.isNotEmpty ? '• $crawledTitle' : '• (Không xác định)',
+                                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colors.primary),
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Text(
+                                            'Truyện đang chọn là:',
+                                            style: TextStyle(fontSize: 12.5, color: colors.textSecondary),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '• $targetTitle',
+                                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colors.textPrimary),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            'Ứng dụng đã dừng tải để tránh nhầm lẫn hoặc ghi đè sai chương.',
+                                            style: TextStyle(fontSize: 12, color: colors.textMuted, height: 1.4),
+                                          ),
+                                        ],
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          child: const Text('Đã hiểu', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          onPressed: () => Navigator.pop(ctx),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                                return;
+                              }
+
+                              if (context.mounted) {
+                                setState(() => _isCheckingUrl = false);
+                                AppToast.showSuccess(
+                                  context,
+                                  'Bắt đầu tải các chương tiếp theo của truyện "$storyTitle"...',
+                                  title: 'Đang Tải Truyện Ngầm',
+                                );
+                              }
+
+                              // Tên truyện khớp -> Bắt đầu tiến trình tải ngầm toàn bộ truyện
+                              appState.startBackgroundStoryCrawl(
+                                baseUrl: inputUrl,
+                                storyTitle: storyTitle,
+                                settings: settings,
+                                startChapter: nextStartChapter,
+                              );
+                            } catch (e) {
+                              if (context.mounted) {
+                                setState(() => _isCheckingUrl = false);
+                                AppToast.showError(
+                                  context,
+                                  'Không thể kiểm tra link truyện: $e',
+                                  duration: const Duration(seconds: 4),
+                                );
+                              }
+                            }
+                          },
                   ),
                 ),
               ],
@@ -393,16 +528,67 @@ class _ChapterListModalState extends State<ChapterListModal> {
           Expanded(
             child: currentStoryAudios.isEmpty
                 ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.menu_book_rounded, size: 40, color: colors.textMuted.withValues(alpha: 0.4)),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Chưa có danh sách chương nào được lưu cho truyện này.',
-                          style: TextStyle(fontSize: 12.5, color: colors.textMuted),
-                        ),
-                      ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: colors.primary.withValues(alpha: 0.12),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.local_library_rounded,
+                              size: 40,
+                              color: colors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            !isStorySelected
+                                ? 'Chưa chọn truyện nào'
+                                : 'Chưa có danh sách chương',
+                            style: TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.bold,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            !isStorySelected
+                                ? 'Vui lòng mở kho truyện để chọn một tác phẩm có sẵn hoặc nhập truyện mới từ tệp / link.'
+                                : 'Chưa có danh sách chương nào được lưu cho truyện này.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: colors.textSecondary,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              widget.onNavigateToLibrary?.call();
+                            },
+                            icon: const Icon(Icons.library_books_rounded, size: 18),
+                            label: const Text(
+                              'Chuyển Đến Kho Truyện',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colors.primary,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 : filteredAudios.isEmpty
