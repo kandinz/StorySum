@@ -1573,18 +1573,16 @@ class AppStateProvider extends ChangeNotifier {
     required SettingsProvider settings,
     PlayerStateProvider? player,
   }) async {
-    // 1. Ghi nhận trạng thái phát trước đó và dừng phát audio của giọng cũ
-    final wasPlaying = player != null && (player.isPlaying || player.currentAudioPath != null);
+    // 1. Ghi nhận trạng thái phát trước đó và dừng phát audio của giọng cũ, xóa sạch audio cũ trên player
+    final wasPlaying = player != null && (player.isPlaying || (!player.isPausedByUser && player.currentAudioPath != null));
     if (player != null) {
-      if (player.isPlaying) {
-        await player.stop(resetPause: false);
-      }
+      await player.stop(resetPause: false);
       player.clearCurrentAudio();
     }
 
-    // 2. Hủy các tiến trình tạo audio của giọng cũ
-    ++_generationSessionId;
-    ++_preloadTaskId;
+    // 2. Hủy các tiến trình tạo audio của phiên cũ
+    final sessionId = ++_generationSessionId;
+    final taskId = ++_preloadTaskId;
 
     if (_currentChapter == null) {
       notifyListeners();
@@ -1657,9 +1655,9 @@ class AppStateProvider extends ChangeNotifier {
 
     notifyListeners();
 
-    // 6. Phát lại ngay câu hiện tại nếu trước đó đang phát, hoặc chuẩn bị sẵn audio câu đó nếu đang pause
-    if (player != null && wasPlaying && !player.isPausedByUser) {
-      if (targetList.isNotEmpty) {
+    // 6. Phát lại ngay câu hiện tại nếu trước đó đang phát, hoặc chuẩn bị sẵn audio câu đó và các câu tiếp theo nếu đang pause
+    if (targetList.isNotEmpty) {
+      if (player != null && wasPlaying && !player.isPausedByUser) {
         // A. Load audio và phát lại câu đang phát theo giọng đọc mới
         await playSentence(
           sourceType: _activeAudioSource,
@@ -1674,6 +1672,7 @@ class AppStateProvider extends ChangeNotifier {
           settings: settings,
           player: player,
           startIndex: targetIdx + 1,
+          force: true,
         );
 
         ensureLookaheadAudio(
@@ -1681,39 +1680,69 @@ class AppStateProvider extends ChangeNotifier {
           fromIndex: targetIdx,
           settings: settings,
           player: player,
+          force: true,
         );
+      } else {
+        // Nếu đang tạm dừng (pause), chuẩn bị trước câu hiện tại với giọng mới để sẵn sàng khi bấm Play
+        if (targetIdx < targetList.length && !targetList[targetIdx].hasAudio) {
+          if (_activeAudioSource == AudioSourceType.summary) {
+            _summarySentences[targetIdx] = _summarySentences[targetIdx].copyWith(isGenerating: true);
+          } else {
+            _contentSentences[targetIdx] = _contentSentences[targetIdx].copyWith(isGenerating: true);
+          }
+          notifyListeners();
+
+          Future.microtask(() async {
+            final path = await _synthesizeSingleSentence(
+              sentence: targetList[targetIdx],
+              chapter: _currentChapter!,
+              settings: settings,
+              audioType: _activeAudioSource == AudioSourceType.summary ? 'summary' : 'content',
+            );
+            if (sessionId == _generationSessionId && _currentChapter != null) {
+              if (_activeAudioSource == AudioSourceType.summary && targetIdx < _summarySentences.length) {
+                _summarySentences[targetIdx] = _summarySentences[targetIdx].copyWith(
+                  audioPath: path,
+                  isGenerating: false,
+                  hasError: path == null,
+                );
+              } else if (_activeAudioSource == AudioSourceType.content && targetIdx < _contentSentences.length) {
+                _contentSentences[targetIdx] = _contentSentences[targetIdx].copyWith(
+                  audioPath: path,
+                  isGenerating: false,
+                  hasError: path == null,
+                );
+              }
+              notifyListeners();
+            }
+          });
+        }
+
+        // Đồng thời sinh ngầm nạp sẵn audio giọng mới cho các câu tiếp theo
+        if (player != null) {
+          _startSequentialGeneration(
+            chapter: _currentChapter!,
+            settings: settings,
+            player: player,
+            startIndex: targetIdx + 1,
+            force: true,
+          );
+        }
       }
 
       // C. Đồng thời nạp/tạo trước audio cho chương tiếp theo theo giọng đọc mới
-      if (_preloadedNextChapter != null) {
-        _preloadAudioForChapter(
-          preloaded: _preloadedNextChapter!,
-          settings: settings,
-          taskId: _preloadTaskId,
-          player: player,
-        );
-      } else {
-        _preloadNextChapter(settings: settings, player: player);
-      }
-    } else {
-      // Nếu đang tạm dừng (pause), chuẩn bị trước câu hiện tại với giọng mới để sẵn sàng khi bấm Play
-      if (targetList.isNotEmpty && targetIdx < targetList.length && !targetList[targetIdx].hasAudio) {
-        Future.microtask(() async {
-          final path = await _synthesizeSingleSentence(
-            sentence: targetList[targetIdx],
-            chapter: _currentChapter!,
+      if (player != null) {
+        if (_preloadedNextChapter != null) {
+          _preloadAudioForChapter(
+            preloaded: _preloadedNextChapter!,
             settings: settings,
-            audioType: _activeAudioSource == AudioSourceType.summary ? 'summary' : 'content',
+            taskId: taskId,
+            player: player,
+            force: true,
           );
-          if (path != null && _currentChapter != null) {
-            if (_activeAudioSource == AudioSourceType.summary && targetIdx < _summarySentences.length) {
-              _summarySentences[targetIdx] = _summarySentences[targetIdx].copyWith(audioPath: path);
-            } else if (_activeAudioSource == AudioSourceType.content && targetIdx < _contentSentences.length) {
-              _contentSentences[targetIdx] = _contentSentences[targetIdx].copyWith(audioPath: path);
-            }
-            notifyListeners();
-          }
-        });
+        } else {
+          _preloadNextChapter(settings: settings, player: player);
+        }
       }
     }
   }
@@ -1771,8 +1800,9 @@ class AppStateProvider extends ChangeNotifier {
     required SettingsProvider settings,
     required PlayerStateProvider player,
     int startIndex = 0,
+    bool force = false,
   }) {
-    if (!player.isPlaying || player.isPausedByUser) return;
+    if (!force && (!player.isPlaying || player.isPausedByUser)) return;
     final sessionId = ++_generationSessionId;
 
     if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isNotEmpty) {
@@ -1782,6 +1812,7 @@ class AppStateProvider extends ChangeNotifier {
         player: player,
         sessionId: sessionId,
         startIndex: startIndex,
+        force: force,
       );
     } else if (_contentSentences.isNotEmpty) {
       _startContentAudioGeneration(
@@ -1790,6 +1821,7 @@ class AppStateProvider extends ChangeNotifier {
         player: player,
         sessionId: sessionId,
         startIndex: startIndex,
+        force: force,
       );
     }
   }
@@ -1801,8 +1833,9 @@ class AppStateProvider extends ChangeNotifier {
     required PlayerStateProvider player,
     required int sessionId,
     int startIndex = 0,
+    bool force = false,
   }) {
-    if (!player.isPlaying || player.isPausedByUser) return;
+    if (!force && (!player.isPlaying || player.isPausedByUser)) return;
     Future.microtask(() async {
       final prefetchLimit = settings.audioPrefetchCount;
       final maxIndex = (startIndex + prefetchLimit < _summarySentences.length)
@@ -1810,7 +1843,8 @@ class AppStateProvider extends ChangeNotifier {
           : _summarySentences.length - 1;
 
       for (int i = startIndex; i <= maxIndex; i++) {
-        if (sessionId != _generationSessionId || !player.isPlaying || player.isPausedByUser || i >= _summarySentences.length) return;
+        if (sessionId != _generationSessionId || i >= _summarySentences.length) return;
+        if (!force && (!player.isPlaying || player.isPausedByUser)) return;
 
         final voice = settings.currentVoice;
         final extension = UnifiedTtsService.getAudioExtension(voice);
@@ -1838,7 +1872,8 @@ class AppStateProvider extends ChangeNotifier {
             audioType: 'summary',
           );
 
-          if (sessionId != _generationSessionId || !player.isPlaying || player.isPausedByUser) return;
+          if (sessionId != _generationSessionId) return;
+          if (!force && (!player.isPlaying || player.isPausedByUser)) return;
 
           _summarySentences[i] = _summarySentences[i].copyWith(
             audioPath: path,
@@ -1861,8 +1896,9 @@ class AppStateProvider extends ChangeNotifier {
     required PlayerStateProvider player,
     required int sessionId,
     int startIndex = 0,
+    bool force = false,
   }) {
-    if (!player.isPlaying || player.isPausedByUser) return;
+    if (!force && (!player.isPlaying || player.isPausedByUser)) return;
     Future.microtask(() async {
       final prefetchLimit = settings.audioPrefetchCount;
       final maxIndex = (startIndex + prefetchLimit < _contentSentences.length)
@@ -1870,7 +1906,8 @@ class AppStateProvider extends ChangeNotifier {
           : _contentSentences.length - 1;
 
       for (int i = startIndex; i <= maxIndex; i++) {
-        if (sessionId != _generationSessionId || !player.isPlaying || player.isPausedByUser || i >= _contentSentences.length) return;
+        if (sessionId != _generationSessionId || i >= _contentSentences.length) return;
+        if (!force && (!player.isPlaying || player.isPausedByUser)) return;
 
         final voice = settings.currentVoice;
         final extension = UnifiedTtsService.getAudioExtension(voice);
@@ -1898,7 +1935,8 @@ class AppStateProvider extends ChangeNotifier {
             audioType: 'content',
           );
 
-          if (sessionId != _generationSessionId || !player.isPlaying || player.isPausedByUser) return;
+          if (sessionId != _generationSessionId) return;
+          if (!force && (!player.isPlaying || player.isPausedByUser)) return;
 
           _contentSentences[i] = _contentSentences[i].copyWith(
             audioPath: path,
@@ -1920,8 +1958,10 @@ class AppStateProvider extends ChangeNotifier {
     required int fromIndex,
     required SettingsProvider settings,
     required PlayerStateProvider player,
+    bool force = false,
   }) {
-    if (_currentChapter == null || !player.isPlaying || player.isPausedByUser) return;
+    if (_currentChapter == null) return;
+    if (!force && (!player.isPlaying || player.isPausedByUser)) return;
     final sessionId = _generationSessionId;
     final list = sourceType == AudioSourceType.summary ? _summarySentences : _contentSentences;
     final prefetchLimit = settings.audioPrefetchCount;
@@ -1929,7 +1969,8 @@ class AppStateProvider extends ChangeNotifier {
 
     Future.microtask(() async {
       for (int i = fromIndex; i <= maxIndex; i++) {
-        if (sessionId != _generationSessionId || _currentChapter == null || !player.isPlaying || player.isPausedByUser) return;
+        if (sessionId != _generationSessionId || _currentChapter == null) return;
+        if (!force && (!player.isPlaying || player.isPausedByUser)) return;
         if (i < 0 || i >= list.length) continue;
 
         final voice = settings.currentVoice;
@@ -1967,7 +2008,8 @@ class AppStateProvider extends ChangeNotifier {
             audioType: sourceType == AudioSourceType.summary ? 'summary' : 'content',
           );
 
-          if (sessionId != _generationSessionId || _currentChapter == null || !player.isPlaying || player.isPausedByUser) return;
+          if (sessionId != _generationSessionId || _currentChapter == null) return;
+          if (!force && (!player.isPlaying || player.isPausedByUser)) return;
 
           if (sourceType == AudioSourceType.summary) {
             _summarySentences[i] = _summarySentences[i].copyWith(
@@ -2774,8 +2816,9 @@ class AppStateProvider extends ChangeNotifier {
     required SettingsProvider settings,
     required int taskId,
     PlayerStateProvider? player,
+    bool force = false,
   }) async {
-    if (player != null && (!player.isPlaying || player.isPausedByUser)) return;
+    if (!force && player != null && (!player.isPlaying || player.isPausedByUser)) return;
     final chapter = preloaded.chapter;
     final prefetchLimit = settings.audioPrefetchCount;
     final voice = settings.currentVoice;
@@ -2785,7 +2828,8 @@ class AppStateProvider extends ChangeNotifier {
     if (_activeAudioSource == AudioSourceType.summary && preloaded.summarySentences.isNotEmpty) {
       final limit = preloaded.summarySentences.length < prefetchLimit ? preloaded.summarySentences.length : prefetchLimit;
       for (int i = 0; i < limit; i++) {
-        if (taskId != _preloadTaskId || (player != null && (!player.isPlaying || player.isPausedByUser))) return;
+        if (taskId != _preloadTaskId) return;
+        if (!force && player != null && (!player.isPlaying || player.isPausedByUser)) return;
 
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: chapter.storyTitle,
@@ -2806,7 +2850,8 @@ class AppStateProvider extends ChangeNotifier {
             settings: settings,
             audioType: 'summary',
           );
-          if (taskId != _preloadTaskId || (player != null && (!player.isPlaying || player.isPausedByUser))) return;
+          if (taskId != _preloadTaskId) return;
+          if (!force && player != null && (!player.isPlaying || player.isPausedByUser)) return;
           if (path != null) {
             preloaded.summarySentences[i] = preloaded.summarySentences[i].copyWith(
               audioPath: path,
@@ -2822,7 +2867,8 @@ class AppStateProvider extends ChangeNotifier {
     if (_activeAudioSource == AudioSourceType.content && preloaded.contentSentences.isNotEmpty) {
       final limit = preloaded.contentSentences.length < prefetchLimit ? preloaded.contentSentences.length : prefetchLimit;
       for (int i = 0; i < limit; i++) {
-        if (taskId != _preloadTaskId || (player != null && (!player.isPlaying || player.isPausedByUser))) return;
+        if (taskId != _preloadTaskId) return;
+        if (!force && player != null && (!player.isPlaying || player.isPausedByUser)) return;
 
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: chapter.storyTitle,
@@ -2843,7 +2889,8 @@ class AppStateProvider extends ChangeNotifier {
             settings: settings,
             audioType: 'content',
           );
-          if (taskId != _preloadTaskId || (player != null && (!player.isPlaying || player.isPausedByUser))) return;
+          if (taskId != _preloadTaskId) return;
+          if (!force && player != null && (!player.isPlaying || player.isPausedByUser)) return;
           if (path != null) {
             preloaded.contentSentences[i] = preloaded.contentSentences[i].copyWith(
               audioPath: path,

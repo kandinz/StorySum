@@ -802,6 +802,24 @@ class _ChapterListModalState extends State<ChapterListModal> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (isCurrent) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: colors.primary,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'Đang đọc',
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
                         if (isBookmarked) ...[
                           const SizedBox(width: 6),
                           Tooltip(
@@ -825,25 +843,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
                               ),
                             ),
                           ),
-                        ],
-                        if (isCurrent) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: colors.primary,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              'Đang đọc',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ] else if (!isBookmarked) ...[
+                        ] else if (!isCurrent) ...[
                           Icon(Icons.chevron_right_rounded, size: 16, color: colors.textMuted),
                         ],
                       ],

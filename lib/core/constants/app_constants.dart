@@ -1,6 +1,6 @@
 class AppConstants {
   static const String appName = 'StorySum';
-  static const String appVersion = '1.0.59';
+  static const String appVersion = '1.0.60';
 
   // Default Story Link & Chapter
   static const String defaultStoryUrl = 'https://xtruyen.vn/truyen/pham-nhan-tu-tien/chuong-1/';

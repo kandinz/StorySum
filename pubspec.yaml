@@ -1,7 +1,7 @@
 name: app_story
 description: "StorySum - Story Crawler, AI Summary & TTS Audio Application for Android"
 publish_to: 'none'
-version: 1.0.59+60
+version: 1.0.60+61
 
 
 
