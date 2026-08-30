@@ -10,6 +10,7 @@ import '../models/sentence_item.dart';
 import '../services/crawler_service.dart';
 import '../services/summary_service.dart';
 import '../services/onnx_tts_service.dart';
+import '../services/tiktok_tts_service.dart';
 import '../services/unified_tts_service.dart';
 import '../services/story_import_service.dart';
 import '../models/voice_model.dart';
@@ -1591,6 +1592,8 @@ class AppStateProvider extends ChangeNotifier {
     // 2. Hủy các tiến trình tạo audio của phiên cũ ngay lập tức
     final sessionId = ++_generationSessionId;
     final taskId = ++_preloadTaskId;
+    TikTokTtsService.clearQueue();
+    _inFlightSynthesis.clear();
 
     // 3. Thu thập danh sách các file audio cũ đã nạp trong bộ nhớ để quét xóa
     final List<String> pathsToDelete = [];
@@ -1711,12 +1714,13 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
-  /// Tổng hợp TTS cho một câu đơn lẻ (có chống xung đột song song _inFlightSynthesis)
+  /// Tổng hợp TTS cho một câu đơn lẻ (có chống xung đột song song _inFlightSynthesis & hỗ trợ ưu tiên)
   Future<String?> _synthesizeSingleSentence({
     required SentenceItem sentence,
     required ChapterModel chapter,
     required SettingsProvider settings,
     required String audioType,
+    bool isPriority = false,
   }) async {
     try {
       final voice = settings.currentVoice;
@@ -1755,6 +1759,7 @@ class AppStateProvider extends ChangeNotifier {
         audioType: audioType,
         sentenceIndex: sentence.index,
         speed: settings.speed,
+        isPriority: isPriority,
       );
 
       _inFlightSynthesis[expectedPath] = future;
@@ -1777,6 +1782,7 @@ class AppStateProvider extends ChangeNotifier {
     required String audioType,
     required int sentenceIndex,
     required double speed,
+    bool isPriority = false,
   }) async {
     try {
       final file = File(expectedPath);
@@ -1792,6 +1798,7 @@ class AppStateProvider extends ChangeNotifier {
         chapterNumber: chapter.chapterNumber,
         audioType: '${audioType}_s$sentenceIndex',
         speed: speed,
+        isPriority: isPriority,
       );
       return result.audioFilePath;
     } catch (e) {
@@ -2105,6 +2112,7 @@ class AppStateProvider extends ChangeNotifier {
 
     // Hủy các tiến trình tạo audio của phiên cũ trước đó để ưu tiên tuyệt đối cho câu này
     final currentSession = ++_generationSessionId;
+    TikTokTtsService.clearQueue();
 
     // Lưu vị trí câu cuối đã phát
     _lastPlayedStoryTitle = _currentChapter!.storyTitle;
@@ -2139,6 +2147,7 @@ class AppStateProvider extends ChangeNotifier {
         chapter: _currentChapter!,
         settings: settings,
         audioType: sourceType == AudioSourceType.summary ? 'summary' : 'content',
+        isPriority: true,
       );
 
       if (currentSession != _generationSessionId || _currentChapter == null) return;
@@ -2265,6 +2274,7 @@ class AppStateProvider extends ChangeNotifier {
       if (_activeAudioSource == targetSource) {
         _generationSessionId++;
         _preloadTaskId++;
+        TikTokTtsService.clearQueue();
         await player.pause();
         notifyListeners();
         return;
@@ -2369,6 +2379,7 @@ class AppStateProvider extends ChangeNotifier {
 
     _activeAudioSource = newSource;
     _generationSessionId++; // Hủy tiến trình sinh audio của tab trước
+    TikTokTtsService.clearQueue();
 
     // 1. Nếu chuyển sang Tóm tắt mà chưa có tóm tắt -> tóm tắt ngay
     if (newSource == AudioSourceType.summary && _summarySentences.isEmpty && _currentChapter != null) {
@@ -2428,6 +2439,8 @@ class AppStateProvider extends ChangeNotifier {
   /// Dừng phát toàn bộ và reset trạng thái câu
   void stopPlayback({required PlayerStateProvider player}) {
     _activeSentenceIndex = null;
+    _generationSessionId++;
+    TikTokTtsService.clearQueue();
     player.stop();
     notifyListeners();
   }

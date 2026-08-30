@@ -36,6 +36,7 @@ class UnifiedTtsService {
     String audioType = 'summary',
     String? outputFilePath,
     double speed = 1.0,
+    bool isPriority = false,
     Function(double progress)? onProgress,
   }) async {
     switch (voice.engine) {
@@ -73,6 +74,7 @@ class UnifiedTtsService {
             audioType: audioType,
             outputFilePath: outputFilePath,
             speed: speed,
+            isPriority: isPriority,
             onProgress: onProgress,
           );
         } catch (e) {

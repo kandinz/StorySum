@@ -143,14 +143,29 @@ class TikTokTtsService {
     _isProcessingQueue = false;
   }
 
-  /// Tổng hợp âm thanh TikTok theo hàng đợi an toàn
-  Future<Uint8List?> synthesizeBytes(String text, String speaker) {
+  /// Hủy và xóa toàn bộ các task đang chờ trong hàng đợi
+  static void clearQueue() {
+    while (_queue.isNotEmpty) {
+      final job = _queue.removeFirst();
+      if (!job.completer.isCompleted) {
+        job.completer.complete(null);
+      }
+    }
+  }
+
+  /// Tổng hợp âm thanh TikTok theo hàng đợi an toàn (có hỗ trợ ưu tiên phát ngay)
+  Future<Uint8List?> synthesizeBytes(String text, String speaker, {bool isPriority = false}) {
     final completer = Completer<Uint8List?>();
-    _queue.add(_TikTokTaskJob(
+    final job = _TikTokTaskJob(
       text: text,
       speaker: speaker,
       completer: completer,
-    ));
+    );
+    if (isPriority) {
+      _queue.addFirst(job);
+    } else {
+      _queue.add(job);
+    }
     _processQueue();
     return completer.future;
   }
@@ -164,6 +179,7 @@ class TikTokTtsService {
     String audioType = 'summary',
     String? outputFilePath,
     double speed = 1.0,
+    bool isPriority = false,
     Function(double progress)? onProgress,
   }) async {
     onProgress?.call(0.1);
@@ -184,7 +200,7 @@ class TikTokTtsService {
 
     onProgress?.call(0.3);
 
-    final audioBytes = await synthesizeBytes(cleanText, voiceSpeaker);
+    final audioBytes = await synthesizeBytes(cleanText, voiceSpeaker, isPriority: isPriority);
 
     if (audioBytes == null || audioBytes.isEmpty) {
       throw Exception('Không thể tổng hợp giọng đọc từ TikTok TTS');
