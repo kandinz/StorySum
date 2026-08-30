@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:permission_handler/permission_handler.dart';
-import 'package:share_plus/share_plus.dart';
 
 class AudioExporter {
   /// Lấy thư mục lưu trữ audio cục bộ của App
@@ -65,52 +63,6 @@ class AudioExporter {
     }
     final fileName = '${safeStory}_C${chapterNumber}_${typeTag}_S${sentenceIndex}${voiceTag}$hashTag.$extension';
     return p.join(dir.path, fileName);
-  }
-
-
-
-  /// Xuất file audio sang thư mục Downloads chung của thiết bị
-  static Future<String?> exportToDownloads(String sourceFilePath) async {
-    try {
-      final sourceFile = File(sourceFilePath);
-      if (!await sourceFile.exists()) return null;
-
-      // Yêu cầu quyền lưu trữ nếu cần
-      if (Platform.isAndroid) {
-        await Permission.storage.request();
-      }
-
-      Directory? downloadsDir;
-      if (Platform.isAndroid) {
-        downloadsDir = Directory('/storage/emulated/0/Download');
-        if (!await downloadsDir.exists()) {
-          downloadsDir = await getExternalStorageDirectory();
-        }
-      } else {
-        downloadsDir = await getDownloadsDirectory();
-      }
-
-      if (downloadsDir != null) {
-        final targetFileName = p.basename(sourceFilePath);
-        final targetPath = p.join(downloadsDir.path, targetFileName);
-        final targetFile = await sourceFile.copy(targetPath);
-        return targetFile.path;
-      }
-    } catch (e) {
-      print('Lỗi xuất file sang Downloads: $e');
-    }
-    return null;
-  }
-
-  /// Chia sẻ file Audio qua các ứng dụng khác
-  static Future<void> shareAudioFile(String filePath, {String? title}) async {
-    final file = File(filePath);
-    if (await file.exists()) {
-      await Share.shareXFiles(
-        [XFile(filePath)],
-        text: title ?? 'Nghe audio truyện từ StorySum',
-      );
-    }
   }
 
   /// Xóa danh sách file audio trên đĩa

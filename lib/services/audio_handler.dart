@@ -268,8 +268,16 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       duration: _player.duration,
     ));
 
-    await _player.setFilePath(filePath);
-    await _player.play();
-    await _syncBgmWithVoice(true);
+    try {
+      if (_player.playing) {
+        await _player.stop();
+      }
+      await _player.setFilePath(filePath);
+      await _player.seek(Duration.zero);
+      await _player.play();
+      await _syncBgmWithVoice(true);
+    } catch (e) {
+      print('Lỗi playFilePath: $e');
+    }
   }
 }

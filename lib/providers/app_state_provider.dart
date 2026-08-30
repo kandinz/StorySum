@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart' hide WordBoundary;
 import 'package:flutter/services.dart';
@@ -1568,24 +1569,26 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
-  /// Xử lý đồng bộ lại trạng thái âm thanh và tự động nạp/phát lại audio khi người dùng đổi giọng đọc
+  /// Xử lý đồng bộ lại trạng thái âm thanh khi đổi giọng đọc:
+  /// - Tạm dừng audio (pause)
+  /// - Xóa sạch các file audio của giọng cũ chạy ngầm (non-blocking)
+  /// - Nạp cache và chuẩn bị sẵn sàng phát theo giọng mới
   Future<void> onVoiceChanged({
     required SettingsProvider settings,
     PlayerStateProvider? player,
     String? oldVoiceId,
   }) async {
-    // 1. Ghi nhận trạng thái phát trước đó và dừng ngay phát audio của giọng cũ, xóa sạch audio cũ trên player
-    final wasPlaying = player != null && (player.isPlaying || (!player.isPausedByUser && player.currentAudioPath != null));
+    // 1. Tạm dừng ngay audio đang phát (Pause audio) và xóa audio hiện tại trên player
     if (player != null) {
-      await player.stop(resetPause: false);
+      await player.pause();
       player.clearCurrentAudio();
     }
 
-    // 2. Hủy các tiến trình tạo audio của phiên cũ
+    // 2. Hủy các tiến trình tạo audio của phiên cũ ngay lập tức
     final sessionId = ++_generationSessionId;
     final taskId = ++_preloadTaskId;
 
-    // 3. Thu thập danh sách các file audio cũ đã nạp trong bộ nhớ để xóa vật lý trên đĩa
+    // 3. Thu thập danh sách các file audio cũ đã nạp trong bộ nhớ để quét xóa
     final List<String> pathsToDelete = [];
     for (final s in _summarySentences) {
       if (s.audioPath != null && s.audioPath!.isNotEmpty) {
@@ -1610,7 +1613,7 @@ class AppStateProvider extends ChangeNotifier {
       }
     }
 
-    // 4. Xóa ngay lập tức tất cả audio đã nạp của giọng cũ trong bộ nhớ
+    // 4. Xóa ngay lập tức tất cả audio đã nạp của giọng cũ trong bộ nhớ RAM
     if (_summarySentences.isNotEmpty) {
       _summarySentences = _summarySentences
           .map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false))
@@ -1624,19 +1627,21 @@ class AppStateProvider extends ChangeNotifier {
     _preloadedNextChapter = null;
     notifyListeners();
 
-    // 5. Xóa triệt để toàn bộ file audio vật lý của giọng cũ trên ổ đĩa
-    await AudioExporter.deleteSentenceAudioFiles(pathsToDelete);
-    await AudioExporter.deleteOldVoiceAudioFiles(
-      oldVoiceId: oldVoiceId,
-      currentVoiceId: settings.selectedVoiceId,
-    );
+    // 5. Xóa các file audio giọng cũ CHẠY NGẦM KHÔNG CHẶN luồng tạo audio mới (Non-blocking background cleanup)
+    unawaited(Future(() async {
+      await AudioExporter.deleteSentenceAudioFiles(pathsToDelete);
+      await AudioExporter.deleteOldVoiceAudioFiles(
+        oldVoiceId: oldVoiceId,
+        currentVoiceId: settings.selectedVoiceId,
+      );
+    }));
 
     if (_currentChapter == null) {
       notifyListeners();
       return;
     }
 
-    // 6. Quét lại audio của giọng mới cho tóm tắt & nội dung từ cache trên đĩa
+    // 6. Quét nhanh audio của giọng mới cho tóm tắt & nội dung từ cache trên đĩa (nếu đã có sẵn trước đó)
     final voice = settings.currentVoice;
     final voiceId = settings.selectedVoiceId;
 
@@ -1677,51 +1682,27 @@ class AppStateProvider extends ChangeNotifier {
 
     notifyListeners();
 
-    // 8. Tự động phát lại nếu trước đó đang phát, hoặc chuẩn bị sẵn audio cho câu hiện tại & tiếp theo nếu đang pause
-    if (targetList.isNotEmpty) {
-      if (player != null && wasPlaying && !player.isPausedByUser) {
-        // A. Load audio và phát lại câu đang phát theo giọng đọc mới
-        await playSentence(
-          sourceType: _activeAudioSource,
-          sentenceIndex: targetIdx,
-          settings: settings,
-          player: player,
-        );
+    // 8. Chuẩn bị / nạp trước nhẹ câu hiện tại & tiếp theo (Lookahead) theo giọng mới khi đang pause
+    // Khi người dùng bấm Play sẽ phát ngay theo giọng mới mà không phải đợi process khác
+    if (targetList.isNotEmpty && player != null) {
+      ensureLookaheadAudio(
+        sourceType: _activeAudioSource,
+        fromIndex: targetIdx,
+        settings: settings,
+        player: player,
+        force: true,
+      );
 
-        // B. Đồng thời sinh ngầm audio theo giọng đọc mới cho các câu tiếp theo trong chương hiện tại
-        _startSequentialGeneration(
-          chapter: _currentChapter!,
+      if (_preloadedNextChapter != null) {
+        _preloadAudioForChapter(
+          preloaded: _preloadedNextChapter!,
           settings: settings,
+          taskId: taskId,
           player: player,
-          startIndex: targetIdx + 1,
           force: true,
         );
       } else {
-        // Nếu đang tạm dừng (pause), nạp/chuẩn bị trước audio cho câu hiện tại và các câu tiếp theo theo giọng mới
-        if (player != null) {
-          ensureLookaheadAudio(
-            sourceType: _activeAudioSource,
-            fromIndex: targetIdx,
-            settings: settings,
-            player: player,
-            force: true,
-          );
-        }
-      }
-
-      // C. Đồng thời nạp/tạo trước audio cho chương tiếp theo theo giọng đọc mới
-      if (player != null) {
-        if (_preloadedNextChapter != null) {
-          _preloadAudioForChapter(
-            preloaded: _preloadedNextChapter!,
-            settings: settings,
-            taskId: taskId,
-            player: player,
-            force: true,
-          );
-        } else {
-          _preloadNextChapter(settings: settings, player: player);
-        }
+        _preloadNextChapter(settings: settings, player: player);
       }
     }
   }
@@ -2027,7 +2008,15 @@ class AppStateProvider extends ChangeNotifier {
 
     _activeAudioSource = sourceType;
     _activeSentenceIndex = sentenceIndex;
+    if (sourceType == AudioSourceType.summary) {
+      _currentSummarySentenceIndex = sentenceIndex;
+    } else {
+      _currentContentSentenceIndex = sentenceIndex;
+    }
     notifyListeners();
+
+    // Hủy các tiến trình tạo audio của phiên cũ trước đó để ưu tiên tuyệt đối cho câu này
+    final currentSession = ++_generationSessionId;
 
     // Lưu vị trí câu cuối đã phát
     _lastPlayedStoryTitle = _currentChapter!.storyTitle;
@@ -2044,7 +2033,6 @@ class AppStateProvider extends ChangeNotifier {
       storyUrl: _currentChapter!.sourceUrl,
     );
 
-    final currentSession = _generationSessionId;
     var item = list[sentenceIndex];
 
     // Nếu câu này chưa có audio, ưu tiên sinh ngay lập tức
@@ -2085,7 +2073,7 @@ class AppStateProvider extends ChangeNotifier {
 
     if (currentSession != _generationSessionId) return;
 
-    // Phát câu nếu đã sẵn sàng
+    // Phát câu ngay lập tức (resets và phát từ đầu câu 0s)
     if (item.hasAudio && _activeSentenceIndex == sentenceIndex) {
       final typeName = sourceType == AudioSourceType.summary ? 'Tóm tắt' : 'Nội dung';
       await player.playAudio(
@@ -2112,7 +2100,7 @@ class AppStateProvider extends ChangeNotifier {
     // Tự động duy trì nạp trước lookahead buffer theo setting
     ensureLookaheadAudio(
       sourceType: sourceType,
-      fromIndex: sentenceIndex,
+      fromIndex: sentenceIndex + 1,
       settings: settings,
       player: player,
     );
