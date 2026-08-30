@@ -375,7 +375,7 @@ class AppStateProvider extends ChangeNotifier {
         );
         final file = File(expectedPath);
         if (await file.exists() && await file.length() > 500) {
-          result.add(s.copyWith(audioPath: expectedPath));
+          result.add(s.copyWith(audioPath: expectedPath, isGenerating: false, hasError: false));
         } else {
           result.add(s);
         }
@@ -1664,7 +1664,7 @@ class AppStateProvider extends ChangeNotifier {
 
     if (sessionId != _generationSessionId) return;
 
-    // 5. Xác định index câu hiện tại
+    // 7. Xác định index câu hiện tại
     final targetList = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
     int targetIdx = _activeSentenceIndex ?? (_activeAudioSource == AudioSourceType.summary ? _currentSummarySentenceIndex : _currentContentSentenceIndex);
     targetIdx = getEffectiveSentenceIndex(targetIdx, targetList.length);
@@ -1677,7 +1677,7 @@ class AppStateProvider extends ChangeNotifier {
 
     notifyListeners();
 
-    // 6. Phát lại ngay câu hiện tại nếu trước đó đang phát, hoặc chuẩn bị sẵn audio câu đó và các câu tiếp theo nếu đang pause
+    // 8. Tự động phát lại nếu trước đó đang phát, hoặc chuẩn bị sẵn audio cho câu hiện tại & tiếp theo nếu đang pause
     if (targetList.isNotEmpty) {
       if (player != null && wasPlaying && !player.isPausedByUser) {
         // A. Load audio và phát lại câu đang phát theo giọng đọc mới
@@ -1696,57 +1696,14 @@ class AppStateProvider extends ChangeNotifier {
           startIndex: targetIdx + 1,
           force: true,
         );
-
-        ensureLookaheadAudio(
-          sourceType: _activeAudioSource,
-          fromIndex: targetIdx,
-          settings: settings,
-          player: player,
-          force: true,
-        );
       } else {
-        // Nếu đang tạm dừng (pause), chuẩn bị trước câu hiện tại với giọng mới để sẵn sàng khi bấm Play
-        if (targetIdx < targetList.length && !targetList[targetIdx].hasAudio) {
-          if (_activeAudioSource == AudioSourceType.summary) {
-            _summarySentences[targetIdx] = _summarySentences[targetIdx].copyWith(isGenerating: true);
-          } else {
-            _contentSentences[targetIdx] = _contentSentences[targetIdx].copyWith(isGenerating: true);
-          }
-          notifyListeners();
-
-          Future.microtask(() async {
-            final path = await _synthesizeSingleSentence(
-              sentence: targetList[targetIdx],
-              chapter: _currentChapter!,
-              settings: settings,
-              audioType: _activeAudioSource == AudioSourceType.summary ? 'summary' : 'content',
-            );
-            if (sessionId == _generationSessionId && _currentChapter != null) {
-              if (_activeAudioSource == AudioSourceType.summary && targetIdx < _summarySentences.length) {
-                _summarySentences[targetIdx] = _summarySentences[targetIdx].copyWith(
-                  audioPath: path,
-                  isGenerating: false,
-                  hasError: path == null,
-                );
-              } else if (_activeAudioSource == AudioSourceType.content && targetIdx < _contentSentences.length) {
-                _contentSentences[targetIdx] = _contentSentences[targetIdx].copyWith(
-                  audioPath: path,
-                  isGenerating: false,
-                  hasError: path == null,
-                );
-              }
-              notifyListeners();
-            }
-          });
-        }
-
-        // Đồng thời sinh ngầm nạp sẵn audio giọng mới cho các câu tiếp theo
+        // Nếu đang tạm dừng (pause), nạp/chuẩn bị trước audio cho câu hiện tại và các câu tiếp theo theo giọng mới
         if (player != null) {
-          _startSequentialGeneration(
-            chapter: _currentChapter!,
+          ensureLookaheadAudio(
+            sourceType: _activeAudioSource,
+            fromIndex: targetIdx,
             settings: settings,
             player: player,
-            startIndex: targetIdx + 1,
             force: true,
           );
         }
@@ -1825,7 +1782,7 @@ class AppStateProvider extends ChangeNotifier {
     bool force = false,
   }) {
     if (!force && (!player.isPlaying || player.isPausedByUser)) return;
-    final sessionId = ++_generationSessionId;
+    final sessionId = _generationSessionId;
 
     if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isNotEmpty) {
       _startSummaryAudioGeneration(
@@ -1881,7 +1838,7 @@ class AppStateProvider extends ChangeNotifier {
           extension: extension,
         );
         if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {
-          _summarySentences[i] = _summarySentences[i].copyWith(audioPath: expectedPath);
+          _summarySentences[i] = _summarySentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
           notifyListeners();
         } else if (!_summarySentences[i].hasAudio && !_summarySentences[i].isGenerating) {
           _summarySentences[i] = _summarySentences[i].copyWith(isGenerating: true);
@@ -1944,7 +1901,7 @@ class AppStateProvider extends ChangeNotifier {
           extension: extension,
         );
         if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {
-          _contentSentences[i] = _contentSentences[i].copyWith(audioPath: expectedPath);
+          _contentSentences[i] = _contentSentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
           notifyListeners();
         } else if (!_contentSentences[i].hasAudio && !_contentSentences[i].isGenerating) {
           _contentSentences[i] = _contentSentences[i].copyWith(isGenerating: true);
@@ -2010,9 +1967,9 @@ class AppStateProvider extends ChangeNotifier {
 
         if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {
           if (sourceType == AudioSourceType.summary) {
-            _summarySentences[i] = _summarySentences[i].copyWith(audioPath: expectedPath);
+            _summarySentences[i] = _summarySentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
           } else {
-            _contentSentences[i] = _contentSentences[i].copyWith(audioPath: expectedPath);
+            _contentSentences[i] = _contentSentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
           }
           notifyListeners();
         } else if (!list[i].hasAudio && !list[i].isGenerating) {
@@ -2304,9 +2261,9 @@ class AppStateProvider extends ChangeNotifier {
     final list = targetSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
     if (list.isEmpty) return;
 
-    int targetIdx = targetSource == AudioSourceType.summary
+    int targetIdx = _activeSentenceIndex ?? (targetSource == AudioSourceType.summary
         ? _currentSummarySentenceIndex
-        : _currentContentSentenceIndex;
+        : _currentContentSentenceIndex);
     targetIdx = getEffectiveSentenceIndex(targetIdx, list.length);
 
     await playSentence(
