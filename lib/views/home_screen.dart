@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants/app_constants.dart';
 import '../core/theme/app_theme.dart';
-import '../core/utils/app_toast.dart';
 import '../models/sentence_item.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/player_state_provider.dart';
@@ -448,20 +447,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   onPressed: () async {
-                    final bookmarked = await appState.toggleBookmarkCurrentChapter();
-                    if (context.mounted) {
-                      if (bookmarked) {
-                        AppToast.showSuccess(
-                          context,
-                          'Đã đánh dấu Chương ${appState.currentChapter?.chapterNumber}',
-                        );
-                      } else {
-                        AppToast.showInfo(
-                          context,
-                          'Đã bỏ đánh dấu Chương ${appState.currentChapter?.chapterNumber}',
-                        );
-                      }
-                    }
+                    await appState.toggleBookmarkCurrentChapter();
                   },
                 ),
               ],

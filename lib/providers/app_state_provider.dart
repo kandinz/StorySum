@@ -1573,7 +1573,7 @@ class AppStateProvider extends ChangeNotifier {
     required SettingsProvider settings,
     PlayerStateProvider? player,
   }) async {
-    // 1. Ghi nhận trạng thái phát trước đó và dừng phát audio của giọng cũ, xóa sạch audio cũ trên player
+    // 1. Ghi nhận trạng thái phát trước đó và dừng ngay phát audio của giọng cũ, xóa sạch audio cũ trên player
     final wasPlaying = player != null && (player.isPlaying || (!player.isPausedByUser && player.currentAudioPath != null));
     if (player != null) {
       await player.stop(resetPause: false);
@@ -1589,13 +1589,27 @@ class AppStateProvider extends ChangeNotifier {
       return;
     }
 
-    // 3. Quét lại audio của giọng mới cho tóm tắt & nội dung từ cache trên đĩa
+    // 3. Xóa ngay lập tức tất cả audio đã nạp của giọng cũ trong bộ nhớ (cả câu đang phát và toàn bộ danh sách)
+    if (_summarySentences.isNotEmpty) {
+      _summarySentences = _summarySentences
+          .map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false))
+          .toList();
+    }
+    if (_contentSentences.isNotEmpty) {
+      _contentSentences = _contentSentences
+          .map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false))
+          .toList();
+    }
+    _preloadedNextChapter = null;
+    notifyListeners();
+
+    // 4. Quét lại audio của giọng mới cho tóm tắt & nội dung từ cache trên đĩa
     final voice = settings.currentVoice;
     final voiceId = settings.selectedVoiceId;
 
     if (_summarySentences.isNotEmpty) {
       _summarySentences = await _attachExistingAudioFiles(
-        sentences: _summarySentences.map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false)).toList(),
+        sentences: _summarySentences,
         storyTitle: _currentChapter!.storyTitle,
         chapterNumber: _currentChapter!.chapterNumber,
         type: 'summary',
@@ -1606,7 +1620,7 @@ class AppStateProvider extends ChangeNotifier {
 
     if (_contentSentences.isNotEmpty) {
       _contentSentences = await _attachExistingAudioFiles(
-        sentences: _contentSentences.map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false)).toList(),
+        sentences: _contentSentences,
         storyTitle: _currentChapter!.storyTitle,
         chapterNumber: _currentChapter!.chapterNumber,
         type: 'content',
@@ -1615,32 +1629,7 @@ class AppStateProvider extends ChangeNotifier {
       );
     }
 
-    // 4. Làm mới dữ liệu cache của chương tải trước (preloadedNextChapter) theo giọng mới
-    if (_preloadedNextChapter != null) {
-      final preloadedChap = _preloadedNextChapter!.chapter;
-      final newSummary = await _attachExistingAudioFiles(
-        sentences: _preloadedNextChapter!.summarySentences.map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false)).toList(),
-        storyTitle: preloadedChap.storyTitle,
-        chapterNumber: preloadedChap.chapterNumber,
-        type: 'summary',
-        voiceId: voiceId,
-        voice: voice,
-      );
-      final newContent = await _attachExistingAudioFiles(
-        sentences: _preloadedNextChapter!.contentSentences.map((s) => s.copyWith(audioPath: null, isGenerating: false, hasError: false)).toList(),
-        storyTitle: preloadedChap.storyTitle,
-        chapterNumber: preloadedChap.chapterNumber,
-        type: 'content',
-        voiceId: voiceId,
-        voice: voice,
-      );
-      _preloadedNextChapter = PreloadedChapter(
-        chapter: preloadedChap,
-        summarySentences: newSummary,
-        contentSentences: newContent,
-        summary: _preloadedNextChapter!.summary,
-      );
-    }
+    if (sessionId != _generationSessionId) return;
 
     // 5. Xác định index câu hiện tại
     final targetList = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
@@ -2065,6 +2054,7 @@ class AppStateProvider extends ChangeNotifier {
       storyUrl: _currentChapter!.sourceUrl,
     );
 
+    final currentSession = _generationSessionId;
     var item = list[sentenceIndex];
 
     // Nếu câu này chưa có audio, ưu tiên sinh ngay lập tức
@@ -2083,6 +2073,8 @@ class AppStateProvider extends ChangeNotifier {
         audioType: sourceType == AudioSourceType.summary ? 'summary' : 'content',
       );
 
+      if (currentSession != _generationSessionId || _currentChapter == null) return;
+
       if (sourceType == AudioSourceType.summary) {
         _summarySentences[sentenceIndex] = _summarySentences[sentenceIndex].copyWith(
           audioPath: audioPath,
@@ -2100,6 +2092,8 @@ class AppStateProvider extends ChangeNotifier {
       }
       notifyListeners();
     }
+
+    if (currentSession != _generationSessionId) return;
 
     // Phát câu nếu đã sẵn sàng
     if (item.hasAudio && _activeSentenceIndex == sentenceIndex) {
