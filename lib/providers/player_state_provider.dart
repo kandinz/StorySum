@@ -87,27 +87,45 @@ class PlayerStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  ProcessingState? _lastProcessingState;
+  bool _hasStartedPlaying = false;
+  DateTime? _lastCompletionTime;
+
+  void _triggerPlaybackComplete() {
+    if (_isPausedByUser) return;
+    final now = DateTime.now();
+    if (_lastCompletionTime != null && now.difference(_lastCompletionTime!).inMilliseconds < 400) {
+      return;
+    }
+    _lastCompletionTime = now;
+    _playbackCompleteController.add(null);
+  }
 
   void _initListeners() {
     playerService.playerStateStream.listen((state) {
       _isPlaying = state.playing;
-      final prev = _lastProcessingState;
-      _lastProcessingState = state.processingState;
-      if (state.processingState == ProcessingState.completed && prev != ProcessingState.completed) {
-        if (!_isPausedByUser) {
-          _playbackCompleteController.add(null);
-        }
+      if (state.playing) {
+        _hasStartedPlaying = true;
+      }
+      if (state.processingState == ProcessingState.completed && _hasStartedPlaying) {
+        _hasStartedPlaying = false;
+        _triggerPlaybackComplete();
       }
       notifyListeners();
     });
-
 
     playerService.positionStream.listen((pos) {
       _currentPosition = pos;
       final newIndex = playerService.getHighlightIndexForPosition(pos);
       if (newIndex != _highlightedIndex) {
         _highlightedIndex = newIndex;
+      }
+      // Bổ sung phát hiện hoàn tất câu khi position chạm duration
+      if (_hasStartedPlaying &&
+          _totalDuration > const Duration(milliseconds: 300) &&
+          pos >= _totalDuration &&
+          !_isPlaying) {
+        _hasStartedPlaying = false;
+        _triggerPlaybackComplete();
       }
       notifyListeners();
     });
@@ -134,7 +152,7 @@ class PlayerStateProvider extends ChangeNotifier {
     List<WordBoundary>? boundaries,
   }) async {
     _isPausedByUser = false;
-    _lastProcessingState = null;
+    _hasStartedPlaying = false;
     _currentTitle = title;
     _currentStoryTitle = storyTitle;
     _currentChapterNumber = chapterNumber;
@@ -157,12 +175,12 @@ class PlayerStateProvider extends ChangeNotifier {
   void clearCurrentAudio() {
     _currentAudioPath = null;
     _currentSentenceIndex = null;
-    _lastProcessingState = null;
+    _hasStartedPlaying = false;
     notifyListeners();
   }
 
   Future<void> stop({bool resetPause = false}) async {
-    _lastProcessingState = null;
+    _hasStartedPlaying = false;
     if (resetPause) {
       _isPausedByUser = false;
     }

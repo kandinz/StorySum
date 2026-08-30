@@ -1891,13 +1891,11 @@ class AppStateProvider extends ChangeNotifier {
             audioType: 'summary',
           );
 
-          // Nếu session bị hủy trong khi synthesis → lưu audio nếu có và reset isGenerating
+          // Nếu session bị hủy trong khi synthesis → chỉ reset isGenerating, tuyệt đối KHÔNG gán audioPath cũ
           if (sessionId != _generationSessionId) {
             if (i < _summarySentences.length) {
               _summarySentences[i] = _summarySentences[i].copyWith(
-                audioPath: path,
                 isGenerating: false,
-                hasError: path == null,
               );
               notifyListeners();
             }
@@ -1969,13 +1967,11 @@ class AppStateProvider extends ChangeNotifier {
             audioType: 'content',
           );
 
-          // Nếu session bị hủy trong khi synthesis → lưu audio nếu có và reset isGenerating
+          // Nếu session bị hủy trong khi synthesis → chỉ reset isGenerating, tuyệt đối KHÔNG gán audioPath cũ
           if (sessionId != _generationSessionId) {
             if (i < _contentSentences.length) {
               _contentSentences[i] = _contentSentences[i].copyWith(
-                audioPath: path,
                 isGenerating: false,
-                hasError: path == null,
               );
               notifyListeners();
             }
@@ -2057,20 +2053,17 @@ class AppStateProvider extends ChangeNotifier {
             audioType: sourceType == AudioSourceType.summary ? 'summary' : 'content',
           );
 
-          // Nếu session bị hủy trong khi synthesis → lưu audio nếu có và reset isGenerating
+          // Nếu session bị hủy trong khi synthesis → chỉ reset isGenerating, tuyệt đối KHÔNG gán audioPath cũ
           if (sessionId != _generationSessionId || _currentChapter == null) {
             if (sourceType == AudioSourceType.summary && i < _summarySentences.length) {
               _summarySentences[i] = _summarySentences[i].copyWith(
-                audioPath: path,
                 isGenerating: false,
                 hasError: path == null,
               );
               notifyListeners();
             } else if (i < _contentSentences.length) {
               _contentSentences[i] = _contentSentences[i].copyWith(
-                audioPath: path,
                 isGenerating: false,
-                hasError: path == null,
               );
               notifyListeners();
             }
@@ -2972,7 +2965,7 @@ class AppStateProvider extends ChangeNotifier {
           );
           if (taskId != _preloadTaskId) return;
           if (!force && player != null && (!player.isPlaying || player.isPausedByUser)) return;
-          if (path != null) {
+          if (path != null && path == expectedPath) {
             preloaded.summarySentences[i] = preloaded.summarySentences[i].copyWith(
               audioPath: path,
               isGenerating: false,
@@ -3011,7 +3004,7 @@ class AppStateProvider extends ChangeNotifier {
           );
           if (taskId != _preloadTaskId) return;
           if (!force && player != null && (!player.isPlaying || player.isPausedByUser)) return;
-          if (path != null) {
+          if (path != null && path == expectedPath) {
             preloaded.contentSentences[i] = preloaded.contentSentences[i].copyWith(
               audioPath: path,
               isGenerating: false,
