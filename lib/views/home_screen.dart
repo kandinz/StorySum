@@ -1119,11 +1119,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 width: isDownloading ? 1.5 : 1.2,
               ),
             ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                if (isDownloading)
-                  RotationTransition(
+            child: isDownloading
+                ? RotationTransition(
                     turns: _syncController,
                     child: Icon(
                       Icons.sync_rounded,
@@ -1131,27 +1128,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       size: 21,
                     ),
                   )
-                else
-                  Icon(
+                : Icon(
                     Icons.format_list_bulleted_rounded,
                     color: colors.primary,
                     size: 20,
                   ),
-                if (isDownloading)
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: Container(
-                      width: 7,
-                      height: 7,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF10B981),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
           ),
         ),
       ),
@@ -1471,7 +1452,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     final String status = isFile
         ? (appState.importStatusMessage.isNotEmpty ? appState.importStatusMessage : 'Đang xử lý truyện...')
-        : 'Đang tải chương ${appState.bgCrawlCurrentChapter} (Đã tải ${appState.bgCrawlSuccessCount} chương)...';
+        : 'Đang tải chương ${appState.bgCrawlCurrentChapter}...';
 
     final String counterText = isFile
         ? (appState.importTotalChapters > 0 ? '${appState.importCurrentChapter}/${appState.importTotalChapters}' : '')
@@ -1479,7 +1460,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     final String percentText = isFile
         ? '${((progress ?? 0) * 100).toInt()}%'
-        : 'C${appState.bgCrawlCurrentChapter}';
+        : '';
 
     return Container(
       margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
@@ -1523,25 +1504,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: colors.primary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: colors.primary.withValues(alpha: 0.3), width: 0.8),
-                ),
-                child: Text(
-                  percentText,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.bold,
-                    color: colors.primary,
+              if (percentText.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: colors.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: colors.primary.withValues(alpha: 0.3), width: 0.8),
+                  ),
+                  child: Text(
+                    percentText,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                      color: colors.primary,
+                    ),
                   ),
                 ),
-              ),
+              ],
               const SizedBox(width: 6),
-              // Nút Hủy (Cancel) quá trình thêm/tải truyện
+              // Nút Dừng quá trình thêm/tải truyện
               InkWell(
                 onTap: () {
                   if (isFile) {
@@ -1561,10 +1544,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: const [
-                      Icon(Icons.close_rounded, size: 13, color: Colors.redAccent),
+                      Icon(Icons.stop_rounded, size: 14, color: Colors.redAccent),
                       SizedBox(width: 2),
                       Text(
-                        'Hủy',
+                        'Dừng',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,

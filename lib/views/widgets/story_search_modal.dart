@@ -1092,7 +1092,7 @@ class _StorySearchModalState extends State<StorySearchModal> {
                             ),
                           ] else ...[
                             Text(
-                              'Đọc lần cuối: Chương ${readingChapter.chapterNumber}',
+                              'Chương đọc lần cuối: ${readingChapter.chapterNumber}',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: colors.textSecondary,
