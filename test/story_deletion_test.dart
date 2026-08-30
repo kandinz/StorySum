@@ -1,7 +1,6 @@
 import 'package:app_story/core/constants/app_constants.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:app_story/models/chapter_model.dart';
 import 'package:app_story/providers/app_state_provider.dart';
 
 void main() {

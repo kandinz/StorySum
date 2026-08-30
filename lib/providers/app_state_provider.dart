@@ -102,6 +102,7 @@ class AppStateProvider extends ChangeNotifier {
 
   List<SavedAudioItem> _savedAudios = [];
   List<ChapterModel> _historyChapters = [];
+  Set<int> _bookmarkedChapters = {};
 
   // Progressive loading flags
   bool _isLoadingLibrary = true;
@@ -161,6 +162,61 @@ class AppStateProvider extends ChangeNotifier {
 
   List<SavedAudioItem> get savedAudios => _savedAudios;
   List<ChapterModel> get historyChapters => _historyChapters;
+  Set<int> get bookmarkedChapters => _bookmarkedChapters;
+
+  /// Kiểm tra một số chương có được bookmark không
+  bool isChapterBookmarked(int chapterNumber) => _bookmarkedChapters.contains(chapterNumber);
+
+  /// Kiểm tra chương đang đọc hiện tại có được bookmark không
+  bool get isCurrentChapterBookmarked {
+    if (_currentChapter == null) return false;
+    return _bookmarkedChapters.contains(_currentChapter!.chapterNumber);
+  }
+
+  /// Nạp danh sách các chương đã đánh dấu của một truyện
+  Future<void> loadBookmarksForStory(String? storyTitle) async {
+    if (storyTitle == null || storyTitle.trim().isEmpty) {
+      _bookmarkedChapters = {};
+      notifyListeners();
+      return;
+    }
+    try {
+      _bookmarkedChapters = await db.getBookmarkedChapterNumbers(storyTitle.trim());
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Bật/tắt đánh dấu cho chương hiện tại đang đọc
+  Future<bool> toggleBookmarkCurrentChapter() async {
+    if (_currentChapter == null) return false;
+    return await toggleBookmark(
+      _currentChapter!.storyTitle,
+      _currentChapter!.chapterNumber,
+      _currentChapter!.chapterTitle,
+    );
+  }
+
+  /// Bật/tắt đánh dấu cho một chương bất kỳ của truyện
+  Future<bool> toggleBookmark(String storyTitle, int chapterNumber, [String? chapterTitle]) async {
+    if (storyTitle.trim().isEmpty || chapterNumber <= 0) return false;
+    final isBookmarked = _bookmarkedChapters.contains(chapterNumber);
+    if (isBookmarked) {
+      await db.removeBookmark(
+        storyTitle: storyTitle,
+        chapterNumber: chapterNumber,
+      );
+      _bookmarkedChapters.remove(chapterNumber);
+    } else {
+      await db.addBookmark(
+        storyTitle: storyTitle,
+        chapterNumber: chapterNumber,
+        chapterTitle: chapterTitle ?? 'Chương $chapterNumber',
+      );
+      _bookmarkedChapters.add(chapterNumber);
+    }
+    notifyListeners();
+    return !isBookmarked;
+  }
 
   // Preload getters
   bool get isPreloadingNext => _isPreloadingNext;
@@ -377,6 +433,7 @@ class AppStateProvider extends ChangeNotifier {
       if (settings != null && player != null && _currentChapter == null) {
         await loadLastPlayedOrRecent(settings: settings, player: player);
       }
+      await loadBookmarksForStory(_currentChapter?.storyTitle ?? _lastPlayedStoryTitle);
     } catch (e) {
       print('Lỗi load lịch sử đọc: $e');
     } finally {
@@ -891,6 +948,7 @@ class AppStateProvider extends ChangeNotifier {
     int? targetChapterNumber,
   }) async {
     final cleanTitle = storyTitle.trim().toLowerCase();
+    await loadBookmarksForStory(storyTitle);
     final storyChapters = _savedAudios
         .where((a) => a.storyTitle.trim().toLowerCase() == cleanTitle)
         .toList();
@@ -1323,6 +1381,7 @@ class AppStateProvider extends ChangeNotifier {
 
       _currentChapter = chapter;
       _headerTitle = _formatChapterHeader(chapter);
+      await loadBookmarksForStory(chapter.storyTitle);
       await db.insertChapter(chapter);
       _historyChapters.removeWhere((c) => isSameStory(c.storyTitle, chapter.storyTitle) && c.chapterNumber == chapter.chapterNumber);
       _historyChapters.insert(0, chapter);
@@ -2835,6 +2894,7 @@ class AppStateProvider extends ChangeNotifier {
 
       _currentChapter = chapter;
       chapterController.text = item.chapterNumber.toString();
+      await loadBookmarksForStory(chapter.storyTitle);
 
       if (chapter.sourceUrl.isNotEmpty) {
         urlController.text = chapter.sourceUrl;
@@ -3099,6 +3159,7 @@ class AppStateProvider extends ChangeNotifier {
         (a) => AppStateProvider.isSameStory(a.storyTitle, storyTitle));
     _historyChapters.removeWhere(
         (c) => AppStateProvider.isSameStory(c.storyTitle, storyTitle));
+    await db.deleteBookmarksForStory(storyTitle);
 
     // Nếu truyện bị xóa trùng với truyện đang đọc hoặc đang được chọn -> chuyển về Chưa chọn truyện
     final isCurrent = AppStateProvider.isSameStory(_currentChapter?.storyTitle, storyTitle) ||
@@ -3106,6 +3167,7 @@ class AppStateProvider extends ChangeNotifier {
         AppStateProvider.isSameStory(_bgCrawlStoryTitle, storyTitle);
 
     if (isCurrent) {
+      _bookmarkedChapters.clear();
       await clearCurrentStory(player: player);
     } else {
       notifyListeners();

@@ -81,6 +81,20 @@ class DatabaseHelper {
         last_played_at TEXT
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE ${AppConstants.tableBookmarks} (
+        id TEXT PRIMARY KEY,
+        story_title TEXT,
+        chapter_number INTEGER,
+        chapter_title TEXT,
+        created_at TEXT,
+        UNIQUE(story_title, chapter_number) ON CONFLICT REPLACE
+      )
+    ''');
+    try {
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_bookmarks_story ON ${AppConstants.tableBookmarks}(story_title)');
+    } catch (_) {}
   }
 
   Future _onUpgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -110,6 +124,20 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE $table ADD COLUMN last_played_at TEXT');
       } catch (_) {}
     }
+
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ${AppConstants.tableBookmarks} (
+          id TEXT PRIMARY KEY,
+          story_title TEXT,
+          chapter_number INTEGER,
+          chapter_title TEXT,
+          created_at TEXT,
+          UNIQUE(story_title, chapter_number) ON CONFLICT REPLACE
+        )
+      ''');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_bookmarks_story ON ${AppConstants.tableBookmarks}(story_title)');
+    } catch (_) {}
   }
 
   // ==========================================
@@ -789,6 +817,81 @@ class DatabaseHelper {
     await db.delete(AppConstants.tableAudios);
     await db.delete(AppConstants.tableSummaries);
     await db.delete(AppConstants.tableChapters);
+    await db.delete(AppConstants.tableBookmarks);
+  }
+
+  // ==========================================
+  // Bookmark Operations
+  // ==========================================
+  Future<int> addBookmark({
+    required String storyTitle,
+    required int chapterNumber,
+    String chapterTitle = '',
+  }) async {
+    final db = await database;
+    final id = 'bm_${storyTitle.trim().toLowerCase()}_$chapterNumber';
+    return await db.insert(
+      AppConstants.tableBookmarks,
+      {
+        'id': id,
+        'story_title': storyTitle.trim(),
+        'chapter_number': chapterNumber,
+        'chapter_title': chapterTitle.trim(),
+        'created_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<int> removeBookmark({
+    required String storyTitle,
+    required int chapterNumber,
+  }) async {
+    final db = await database;
+    return await db.delete(
+      AppConstants.tableBookmarks,
+      where: 'LOWER(TRIM(story_title)) = ? AND chapter_number = ?',
+      whereArgs: [storyTitle.trim().toLowerCase(), chapterNumber],
+    );
+  }
+
+  Future<bool> isChapterBookmarked({
+    required String storyTitle,
+    required int chapterNumber,
+  }) async {
+    final db = await database;
+    final maps = await db.query(
+      AppConstants.tableBookmarks,
+      where: 'LOWER(TRIM(story_title)) = ? AND chapter_number = ?',
+      whereArgs: [storyTitle.trim().toLowerCase(), chapterNumber],
+      limit: 1,
+    );
+    return maps.isNotEmpty;
+  }
+
+  Future<Set<int>> getBookmarkedChapterNumbers(String storyTitle) async {
+    final db = await database;
+    final maps = await db.query(
+      AppConstants.tableBookmarks,
+      columns: ['chapter_number'],
+      where: 'LOWER(TRIM(story_title)) = ?',
+      whereArgs: [storyTitle.trim().toLowerCase()],
+    );
+    return maps
+        .map((m) => m['chapter_number'] is int
+            ? m['chapter_number'] as int
+            : int.tryParse(m['chapter_number']?.toString() ?? '0') ?? 0)
+        .where((n) => n > 0)
+        .toSet();
+  }
+
+  Future<int> deleteBookmarksForStory(String storyTitle) async {
+    final db = await database;
+    return await db.delete(
+      AppConstants.tableBookmarks,
+      where: 'LOWER(TRIM(story_title)) = ?',
+      whereArgs: [storyTitle.trim().toLowerCase()],
+    );
   }
 
   Future close() async {

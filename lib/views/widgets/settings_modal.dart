@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:path/path.dart' as p;
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
@@ -343,7 +344,7 @@ class _SettingsModalState extends State<SettingsModal> {
   }
 
   // ===========================================================================
-  // TAB 1: AUDIO & TRUYỆN (Audio nằm trên, Đọc truyện nằm dưới)
+  // TAB 1: AUDIO & TRUYỆN (3 Block: Audio -> Nhạc nền -> Truyện)
   // ===========================================================================
   Widget _buildAudioAndStoryTab(
     BuildContext context,
@@ -356,79 +357,215 @@ class _SettingsModalState extends State<SettingsModal> {
       padding: const EdgeInsets.all(14),
       physics: const BouncingScrollPhysics(),
       children: [
-        // ======================= PHẦN AUDIO (NẰM TRÊN) =======================
-        // 1. Giọng đọc (Tách dòng riêng)
-        _buildFieldLabel(
-          icon: Icons.record_voice_over_rounded,
-          title: 'Giọng đọc',
-          trailing: _buildActionButton(
-            label: 'Thêm giọng .onnx',
-            icon: Icons.add_rounded,
-            onTap: () => _handleImportVoice(context, appState, settings, colors),
-            colors: colors,
-          ),
-          colors: colors,
-        ),
-        const SizedBox(height: 6),
-        _buildVoiceDropdown(context, settings, colors),
-        const SizedBox(height: 12),
-
-        // 2. Tốc độ đọc (Tách dòng riêng)
+        // ==========================================
+        // 1. BLOCK AUDIO
+        // ==========================================
         _buildSectionHeader(
-          icon: Icons.speed_rounded,
-          title: 'Tốc độ đọc',
-          trailing: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              color: colors.primary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              '${settings.speed}x',
-              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.primary),
-            ),
-          ),
+          icon: Icons.record_voice_over_rounded,
+          title: 'Cài Đặt Audio',
           colors: colors,
         ),
         const SizedBox(height: 6),
         Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 2),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: colors.cardBackground,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: colors.border),
           ),
-          child: Center(
-            child: SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 3,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Giọng đọc
+              _buildFieldLabel(
+                icon: Icons.mic_rounded,
+                title: 'Giọng đọc',
+                trailing: _buildActionButton(
+                  label: 'Thêm giọng .onnx',
+                  icon: Icons.add_rounded,
+                  onTap: () => _handleImportVoice(context, appState, settings, colors),
+                  colors: colors,
+                ),
+                colors: colors,
               ),
-              child: Slider(
-                value: settings.speed,
-                min: 0.5,
-                max: 2.0,
-                divisions: 15,
-                label: '${settings.speed}x',
-                activeColor: colors.primary,
-                inactiveColor: colors.elevatedBackground,
-                onChanged: (val) {
-                  final rounded = (val * 10).round() / 10;
-                  settings.setSpeed(rounded);
-                  player.setSpeed(rounded);
-                },
+              const SizedBox(height: 6),
+              _buildVoiceDropdown(context, settings, colors),
+              Divider(color: colors.border, height: 18),
+
+              // Tốc độ đọc
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.speed_rounded, size: 14, color: colors.primary),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Tốc độ đọc',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colors.textPrimary),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${settings.speed}x',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.primary),
+                    ),
+                  ),
+                ],
               ),
-            ),
+              const SizedBox(height: 4),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                ),
+                child: Slider(
+                  value: settings.speed,
+                  min: 0.5,
+                  max: 2.0,
+                  divisions: 15,
+                  label: '${settings.speed}x',
+                  activeColor: colors.primary,
+                  inactiveColor: colors.elevatedBackground,
+                  onChanged: (val) {
+                    final rounded = (val * 10).round() / 10;
+                    settings.setSpeed(rounded);
+                    player.setSpeed(rounded);
+                  },
+                ),
+              ),
+              Divider(color: colors.border, height: 14),
+
+              // Tự chuyển chương
+              _buildCheckboxOption(
+                title: 'Tự chuyển chương khi phát hết',
+                value: settings.autoNextChapter,
+                colors: colors,
+                onChanged: (val) => settings.setAutoNextChapter(val ?? false),
+              ),
+              Divider(color: colors.border, height: 14),
+
+              // Hẹn giờ dừng phát
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: _buildCheckboxOption(
+                      title: player.sleepTimerEnabled
+                          ? 'Hẹn giờ dừng (${player.formattedSleepTimerRemaining})'
+                          : 'Hẹn giờ dừng phát',
+                      value: player.sleepTimerEnabled,
+                      colors: colors,
+                      onChanged: (val) => player.toggleSleepTimer(val ?? false),
+                    ),
+                  ),
+                  _buildSleepTimerDropdown(context, player, colors),
+                ],
+              ),
+              Divider(color: colors.border, height: 14),
+
+              // Số câu tải trước audio
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Số câu tải trước audio',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  // Stepper [-] [ 5 ] [+]
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        onTap: () {
+                          if (settings.audioPrefetchCount > 1) {
+                            settings.setAudioPrefetchCount(settings.audioPrefetchCount - 1);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: colors.elevatedBackground,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: colors.border),
+                          ),
+                          child: Center(
+                            child: Icon(Icons.remove_rounded, size: 16, color: colors.textPrimary),
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => _showPrefetchCountDialog(context, settings, colors),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          width: 44,
+                          height: 28,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: colors.elevatedBackground,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: colors.primary.withValues(alpha: 0.5)),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${settings.audioPrefetchCount}',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.bold,
+                                color: colors.primary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          if (settings.audioPrefetchCount < 50) {
+                            settings.setAudioPrefetchCount(settings.audioPrefetchCount + 1);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: colors.elevatedBackground,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: colors.border),
+                          ),
+                          child: Center(
+                            child: Icon(Icons.add_rounded, size: 16, color: colors.textPrimary),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
 
-        // 3. Nhạc nền (BGM)
-        _buildFieldLabel(
+        // ==========================================
+        // 2. BLOCK NHẠC NỀN
+        // ==========================================
+        _buildSectionHeader(
           icon: Icons.music_note_rounded,
-          title: 'Nhạc Nền (BGM)',
+          title: 'Nhạc Nền',
           trailing: _buildActionButton(
             label: 'Thêm nhạc file máy',
             icon: Icons.add_rounded,
@@ -442,7 +579,7 @@ class _SettingsModalState extends State<SettingsModal> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: colors.cardBackground,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: colors.border),
           ),
           child: Column(
@@ -567,206 +704,93 @@ class _SettingsModalState extends State<SettingsModal> {
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
 
-        // 4. Tự động chuyển chương, Hẹn giờ dừng phát & Số câu tải trước audio
+        // ==========================================
+        // 3. BLOCK TRUYỆN (GIAO DIỆN & ĐỌC TRUYỆN)
+        // ==========================================
         _buildSectionHeader(
-          icon: Icons.playlist_play_rounded,
-          title: 'Tự Động & Hẹn Giờ',
+          icon: Icons.auto_stories_rounded,
+          title: 'Giao Diện & Đọc Truyện',
           colors: colors,
         ),
         const SizedBox(height: 6),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: colors.cardBackground,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: colors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildCheckboxOption(
-                title: 'Tự chuyển chương khi phát hết',
-                value: settings.autoNextChapter,
+              // Giao diện (Theme)
+              _buildFieldLabel(
+                icon: Icons.palette_outlined,
+                title: 'Giao diện',
                 colors: colors,
-                onChanged: (val) => settings.setAutoNextChapter(val ?? false),
               ),
-              Divider(color: colors.border, height: 14),
+              const SizedBox(height: 6),
+              _buildThemeDropdown(context, settings, colors),
+              Divider(color: colors.border, height: 18),
+
+              // Font chữ đọc truyện
+              _buildFieldLabel(
+                icon: Icons.font_download_rounded,
+                title: 'Font chữ đọc truyện',
+                colors: colors,
+              ),
+              const SizedBox(height: 6),
+              _buildFontDropdown(context, settings, colors),
+              Divider(color: colors.border, height: 18),
+
+              // Cỡ chữ hiển thị
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: _buildCheckboxOption(
-                      title: player.sleepTimerEnabled
-                          ? 'Hẹn giờ dừng (${player.formattedSleepTimerRemaining})'
-                          : 'Hẹn giờ dừng phát',
-                      value: player.sleepTimerEnabled,
-                      colors: colors,
-                      onChanged: (val) => player.toggleSleepTimer(val ?? false),
-                    ),
-                  ),
-                  _buildSleepTimerDropdown(context, player, colors),
-                ],
-              ),
-              Divider(color: colors.border, height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Số câu tải trước audio',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: colors.textPrimary,
-                    ),
-                  ),
-                  // Stepper điều chỉnh số câu [-] [ 5 ] [+]
                   Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      InkWell(
-                        onTap: () {
-                          if (settings.audioPrefetchCount > 1) {
-                            settings.setAudioPrefetchCount(settings.audioPrefetchCount - 1);
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(6),
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: colors.elevatedBackground,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: colors.border),
-                          ),
-                          child: Center(
-                            child: Icon(Icons.remove_rounded, size: 16, color: colors.textPrimary),
-                          ),
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () => _showPrefetchCountDialog(context, settings, colors),
-                        borderRadius: BorderRadius.circular(6),
-                        child: Container(
-                          width: 44,
-                          height: 28,
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          decoration: BoxDecoration(
-                            color: colors.elevatedBackground,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: colors.primary.withValues(alpha: 0.5)),
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${settings.audioPrefetchCount}',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.bold,
-                                color: colors.primary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () {
-                          if (settings.audioPrefetchCount < 50) {
-                            settings.setAudioPrefetchCount(settings.audioPrefetchCount + 1);
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(6),
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: colors.elevatedBackground,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: colors.border),
-                          ),
-                          child: Center(
-                            child: Icon(Icons.add_rounded, size: 16, color: colors.textPrimary),
-                          ),
-                        ),
+                      Icon(Icons.format_size_rounded, size: 14, color: colors.primary),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Cỡ chữ hiển thị',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colors.textPrimary),
                       ),
                     ],
                   ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${settings.fontSize.toInt()} px',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.primary),
+                    ),
+                  ),
                 ],
               ),
+              const SizedBox(height: 4),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                ),
+                child: Slider(
+                  value: settings.fontSize,
+                  min: 12.0,
+                  max: 26.0,
+                  divisions: 14,
+                  label: '${settings.fontSize.toInt()}px',
+                  activeColor: colors.primary,
+                  inactiveColor: colors.elevatedBackground,
+                  onChanged: (val) => settings.setFontSize(val),
+                ),
+              ),
             ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Đường phân cách giữa Audio và Đọc truyện
-        Divider(color: colors.border, thickness: 1, height: 1),
-        const SizedBox(height: 16),
-
-        // ======================= PHẦN TRUYỆN (NẰM DƯỚI) =======================
-        // 4. Font chữ đọc truyện (Tách thành dòng riêng biệt)
-        _buildFieldLabel(
-          icon: Icons.font_download_rounded,
-          title: 'Font chữ đọc truyện',
-          colors: colors,
-        ),
-        const SizedBox(height: 6),
-        _buildFontDropdown(context, settings, colors),
-        const SizedBox(height: 12),
-
-        // 5. Theme giao diện (Tách thành dòng riêng biệt)
-        _buildFieldLabel(
-          icon: Icons.palette_outlined,
-          title: 'Giao diện',
-          colors: colors,
-        ),
-        const SizedBox(height: 6),
-        _buildThemeDropdown(context, settings, colors),
-        const SizedBox(height: 12),
-
-        // 6. Cỡ chữ hiển thị
-        _buildSectionHeader(
-          icon: Icons.format_size_rounded,
-          title: 'Cỡ chữ hiển thị',
-          trailing: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              color: colors.primary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              '${settings.fontSize.toInt()} px',
-              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colors.primary),
-            ),
-          ),
-          colors: colors,
-        ),
-        const SizedBox(height: 6),
-        Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          decoration: BoxDecoration(
-            color: colors.cardBackground,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: colors.border),
-          ),
-          child: Center(
-            child: SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 3,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-              ),
-              child: Slider(
-                value: settings.fontSize,
-                min: 12.0,
-                max: 26.0,
-                divisions: 14,
-                label: '${settings.fontSize.toInt()}px',
-                activeColor: colors.primary,
-                inactiveColor: colors.elevatedBackground,
-                onChanged: (val) => settings.setFontSize(val),
-              ),
-            ),
           ),
         ),
       ],
@@ -1315,7 +1339,16 @@ class _SettingsModalState extends State<SettingsModal> {
       ),
       offset: const Offset(0, 44),
       itemBuilder: (ctx) {
-        return settings.availableVoices.map((voice) {
+        final voices = List<VoiceModel>.from(settings.availableVoices);
+        final defaultIdx = voices.indexWhere(
+          (v) => v.id == 'tiktok-vi_female_huong' || v.name.toLowerCase().contains('giọng nữ phổ thông'),
+        );
+        if (defaultIdx > 0) {
+          final defaultVoice = voices.removeAt(defaultIdx);
+          voices.insert(0, defaultVoice);
+        }
+
+        return voices.map((voice) {
           final isSelected = voice.id == settings.selectedVoiceId;
           final isCustom = !VoiceModel.defaultVoices.any((dv) => dv.id == voice.id);
           final displayName = voice.name.replaceAll('(ONNX)', '').replaceAll('.onnx', '').trim();
@@ -2688,8 +2721,74 @@ class _SettingsModalState extends State<SettingsModal> {
             ],
           ),
         ),
+        const SizedBox(height: 14),
+
+        // Khung Góp ý tính năng & Báo lỗi
+        _buildSectionHeader(
+          icon: Icons.feedback_outlined,
+          title: 'Đóng Góp Ý Kiến & Báo Lỗi',
+          colors: colors,
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.cardBackground,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: colors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Mọi ý kiến đóng góp tính năng mới hoặc báo cáo lỗi phát sinh đều giúp ứng dụng StorySum ngày một hoàn thiện và hữu ích hơn.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: colors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _launchFeedbackUrl(context),
+                  icon: const Icon(Icons.rate_review_outlined, size: 18),
+                  label: const Text(
+                    'Góp Ý Tính Năng & Báo Lỗi',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: colors.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
+  }
+
+  Future<void> _launchFeedbackUrl(BuildContext context) async {
+    final uri = Uri.parse(AppConstants.feedbackFormUrl);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(uri);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        AppToast.showError(context, 'Không thể mở biểu mẫu góp ý: $e');
+      }
+    }
   }
 
   Future<void> _downloadDonateImage(BuildContext context, AppThemeColors colors) async {

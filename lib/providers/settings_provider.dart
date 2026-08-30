@@ -36,9 +36,9 @@ class SettingsProvider extends ChangeNotifier {
   final Set<String> _failedKeysInSession = {}; // Lưu các key lỗi trong phiên hiện tại (tự reset khi mở lại app)
 
   static const List<Map<String, dynamic>> themeOptions = [
+    {'mode': AppThemeMode.system, 'name': 'system', 'label': 'System (Hệ thống)'},
     {'mode': AppThemeMode.dark, 'name': 'dark', 'label': 'Dark (Tối)'},
     {'mode': AppThemeMode.light, 'name': 'light', 'label': 'Light (Sáng)'},
-    {'mode': AppThemeMode.system, 'name': 'system', 'label': 'System (Hệ thống)'},
     {'mode': AppThemeMode.sepia, 'name': 'sepia', 'label': 'Sepia (Giấy vàng)'},
     {'mode': AppThemeMode.warm, 'name': 'warm', 'label': 'Warm (Ấm áp)'},
   ];

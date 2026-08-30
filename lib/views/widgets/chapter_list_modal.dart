@@ -32,6 +32,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _urlController = TextEditingController();
   String _searchQuery = '';
+  bool _onlyBookmarked = false;
   final Set<int> _expandedGroups = {};
   bool _hasInitializedExpansion = false;
   bool _hasInitializedUrl = false;
@@ -132,13 +133,18 @@ class _ChapterListModalState extends State<ChapterListModal> {
       _hasInitializedExpansion = true;
     }
 
-    // Lọc theo từ khóa tìm kiếm
+    // Lọc theo từ khóa tìm kiếm & Bookmark
     final query = _searchQuery.trim().toLowerCase();
-    final List<SavedAudioItem> filteredAudios;
-    if (query.isEmpty) {
-      filteredAudios = currentStoryAudios;
-    } else {
-      filteredAudios = currentStoryAudios.where((item) {
+    List<SavedAudioItem> filteredAudios = currentStoryAudios;
+
+    if (_onlyBookmarked) {
+      filteredAudios = filteredAudios.where((item) {
+        return appState.isChapterBookmarked(item.chapterNumber);
+      }).toList();
+    }
+
+    if (query.isNotEmpty) {
+      filteredAudios = filteredAudios.where((item) {
         final numMatch = item.chapterNumber.toString().contains(query);
         final titleMatch = item.title.toLowerCase().contains(query);
         final displayTitleMatch = item.displayChapterTitle.toLowerCase().contains(query);
@@ -486,7 +492,10 @@ class _ChapterListModalState extends State<ChapterListModal> {
             decoration: BoxDecoration(
               color: colors.cardBackground,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: colors.border),
+              border: Border.all(
+                color: _onlyBookmarked ? colors.primary : colors.border,
+                width: _onlyBookmarked ? 1.4 : 1.0,
+              ),
             ),
             child: TextField(
               controller: _searchController,
@@ -494,7 +503,9 @@ class _ChapterListModalState extends State<ChapterListModal> {
               style: TextStyle(fontSize: 13.5, color: colors.textPrimary),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: 'Tìm kiếm số chương hoặc tên chương...',
+                hintText: _onlyBookmarked
+                    ? 'Tìm trong chương đã đánh dấu...'
+                    : 'Tìm kiếm số chương hoặc tên chương...',
                 hintStyle: TextStyle(color: colors.textMuted, fontSize: 13),
                 prefixIcon: Icon(
                   Icons.search_rounded,
@@ -502,18 +513,43 @@ class _ChapterListModalState extends State<ChapterListModal> {
                   color: _searchQuery.isNotEmpty ? colors.primary : colors.textMuted,
                 ),
                 prefixIconConstraints: const BoxConstraints(minWidth: 42, minHeight: 44),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_searchQuery.isNotEmpty)
+                      IconButton(
                         icon: Icon(Icons.cancel_rounded, size: 18, color: colors.textMuted),
                         splashRadius: 18,
-                        constraints: const BoxConstraints(minWidth: 38, minHeight: 44),
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 44),
                         padding: EdgeInsets.zero,
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _searchQuery = '');
                         },
-                      )
-                    : null,
+                      ),
+                    Tooltip(
+                      message: _onlyBookmarked
+                          ? 'Đang lọc chương đã đánh dấu (Chạm để hiện tất cả)'
+                          : 'Chỉ hiện chương đã đánh dấu',
+                      child: IconButton(
+                        icon: Icon(
+                          _onlyBookmarked ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                          size: 20,
+                          color: _onlyBookmarked ? Colors.amber.shade600 : colors.textMuted,
+                        ),
+                        splashRadius: 18,
+                        constraints: const BoxConstraints(minWidth: 38, minHeight: 44),
+                        padding: EdgeInsets.zero,
+                        onPressed: () {
+                          setState(() {
+                            _onlyBookmarked = !_onlyBookmarked;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
@@ -594,7 +630,9 @@ class _ChapterListModalState extends State<ChapterListModal> {
                 : filteredAudios.isEmpty
                     ? Center(
                         child: Text(
-                          'Không tìm thấy chương phù hợp với từ khóa.',
+                          _onlyBookmarked
+                              ? 'Chưa có chương nào được đánh dấu bookmark trong truyện này.'
+                              : 'Không tìm thấy chương phù hợp với từ khóa.',
                           style: TextStyle(fontSize: 12.5, color: colors.textMuted),
                         ),
                       )
@@ -605,7 +643,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
                         itemBuilder: (ctx, index) {
                           final groupKey = sortedGroupKeys[index];
                           final groupItems = groupedChapters[groupKey]!;
-                          final isExpanded = _searchQuery.isNotEmpty || _expandedGroups.contains(groupKey);
+                          final isExpanded = _onlyBookmarked || _searchQuery.isNotEmpty || _expandedGroups.contains(groupKey);
                           final containsCurrent = groupItems.any((c) => c.chapterNumber == currentChapterNum);
 
                           return _buildChapterGroupCard(
@@ -734,6 +772,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
               itemBuilder: (ctx, idx) {
                 final chapter = chapters[idx];
                 final isCurrent = chapter.chapterNumber == currentChapterNum;
+                final isBookmarked = appState.isChapterBookmarked(chapter.chapterNumber);
 
                 return InkWell(
                   onTap: () async {
@@ -761,7 +800,29 @@ class _ChapterListModalState extends State<ChapterListModal> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (isBookmarked) ...[
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: Icon(
+                              Icons.bookmark_rounded,
+                              size: 17,
+                              color: Colors.amber.shade600,
+                            ),
+                            tooltip: 'Bỏ đánh dấu',
+                            splashRadius: 14,
+                            constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                            padding: EdgeInsets.zero,
+                            onPressed: () {
+                              appState.toggleBookmark(
+                                chapter.storyTitle,
+                                chapter.chapterNumber,
+                                chapter.title,
+                              );
+                            },
+                          ),
+                        ],
                         if (isCurrent) ...[
+                          const SizedBox(width: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
@@ -777,7 +838,7 @@ class _ChapterListModalState extends State<ChapterListModal> {
                               ),
                             ),
                           ),
-                        ] else ...[
+                        ] else if (!isBookmarked) ...[
                           Icon(Icons.chevron_right_rounded, size: 16, color: colors.textMuted),
                         ],
                       ],

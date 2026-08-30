@@ -1,6 +1,6 @@
 class AppConstants {
   static const String appName = 'StorySum';
-  static const String appVersion = '1.0.55';
+  static const String appVersion = '1.0.58';
 
   // Default Story Link & Chapter
   static const String defaultStoryUrl = 'https://xtruyen.vn/truyen/pham-nhan-tu-tien/chuong-1/';
@@ -20,6 +20,7 @@ class AppConstants {
   static const String tableChapters = 'chapters';
   static const String tableSummaries = 'summaries';
   static const String tableAudios = 'saved_audios';
+  static const String tableBookmarks = 'bookmarks';
 
   // Storage Keys - Reading & Theme
   static const String keyFontSize = 'app_font_size';
@@ -64,4 +65,7 @@ class AppConstants {
   static const String keyLastPlayedSentenceIndex = 'last_played_sentence_index';
   static const String keyLastPlayedSource = 'last_played_source_type';
   static const String keyLastPlayedStoryUrl = 'last_played_story_url';
+
+  // Feedback & Bug Report Google Form URL
+  static const String feedbackFormUrl = 'https://forms.gle/4jWbNkJqWjD1gQfM7';
 }

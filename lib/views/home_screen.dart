@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants/app_constants.dart';
 import '../core/theme/app_theme.dart';
+import '../core/utils/app_toast.dart';
 import '../models/sentence_item.dart';
 import '../providers/app_state_provider.dart';
 import '../providers/player_state_provider.dart';
@@ -300,6 +301,44 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // Icon Bookmark (Góc trên bên trái, đánh dấu trang đang đọc)
+              if (appState.hasActiveChapter) ...[
+                IconButton(
+                  icon: Icon(
+                    appState.isCurrentChapterBookmarked
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_border_rounded,
+                    color: appState.isCurrentChapterBookmarked
+                        ? Colors.amber.shade600
+                        : colors.textSecondary,
+                    size: 22,
+                  ),
+                  tooltip: appState.isCurrentChapterBookmarked
+                      ? 'Đã đánh dấu chương này (Chạm để bỏ đánh dấu)'
+                      : 'Đánh dấu chương đang đọc',
+                  splashRadius: 18,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  onPressed: () async {
+                    final bookmarked = await appState.toggleBookmarkCurrentChapter();
+                    if (context.mounted) {
+                      if (bookmarked) {
+                        AppToast.showSuccess(
+                          context,
+                          'Đã đánh dấu Chương ${appState.currentChapter?.chapterNumber}',
+                        );
+                      } else {
+                        AppToast.showInfo(
+                          context,
+                          'Đã bỏ đánh dấu Chương ${appState.currentChapter?.chapterNumber}',
+                        );
+                      }
+                    }
+                  },
+                ),
+                const SizedBox(width: 4),
+              ],
+
               // Tiêu đề truyện & Tên chương bên dưới
               Expanded(
                 child: Tooltip(
