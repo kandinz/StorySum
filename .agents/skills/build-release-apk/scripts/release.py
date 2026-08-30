@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import requests
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -131,6 +132,19 @@ def step1_build_apk(cwd, tag):
     return built_apks
 
 
+def safe_request(method, url, max_retries=5, delay=2, **kwargs):
+    kwargs.setdefault("timeout", (60, 900))
+    for attempt in range(1, max_retries + 1):
+        try:
+            res = requests.request(method, url, **kwargs)
+            return res
+        except Exception as e:
+            print(f"[RETRY {attempt}/{max_retries}] Request failed ({e}). Waiting {delay}s...")
+            time.sleep(delay)
+            if attempt == max_retries:
+                raise
+
+
 def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, repo):
     print("\n==========================================")
     print(f"STEP 2: Uploading APKs to GitHub Release ({tag})")
@@ -149,7 +163,7 @@ def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, r
     
     # 1. Check if release exists
     rel_url = f"https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}"
-    res = requests.get(rel_url, headers=headers)
+    res = safe_request("GET", rel_url, headers=headers)
     
     if res.status_code == 200:
         release_data = res.json()
@@ -167,7 +181,7 @@ def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, r
             "draft": False,
             "prerelease": False
         }
-        create_res = requests.post(create_url, headers=headers, json=payload)
+        create_res = safe_request("POST", create_url, headers=headers, json=payload)
         if create_res.status_code not in (200, 201):
             raise RuntimeError(f"Failed to create release: {create_res.status_code} - {create_res.text}")
         release_data = create_res.json()
@@ -184,7 +198,7 @@ def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, r
         if asset_name in existing_assets:
             print(f"[INFO] Asset {asset_name} already exists (ID: {existing_assets[asset_name]}). Deleting old asset...")
             del_url = f"https://api.github.com/repos/{owner}/{repo}/releases/assets/{existing_assets[asset_name]}"
-            del_res = requests.delete(del_url, headers=headers)
+            del_res = safe_request("DELETE", del_url, headers=headers)
             if del_res.status_code == 204:
                 print(f"[INFO] Deleted old {asset_name} successfully.")
             else:
@@ -196,21 +210,21 @@ def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, r
         else:
             upload_url = f"https://uploads.github.com/repos/{owner}/{repo}/releases/{release_id}/assets?name={asset_name}"
             
+        file_size = os.path.getsize(apk_path)
         upload_headers = {
             "Authorization": f"token {token}",
             "Content-Type": "application/vnd.android.package-archive",
+            "Content-Length": str(file_size),
             "User-Agent": "SummaryStory-ReleaseScript"
         }
         
-        print(f"[INFO] Uploading {asset_name} to release...")
-        with open(apk_path, "rb") as f:
-            data = f.read()
-            
+        print(f"[INFO] Uploading {asset_name} ({file_size / (1024*1024):.2f} MB) to release...")
         target_url = upload_url
         current_headers = dict(upload_headers)
         
         while True:
-            upload_res = requests.post(target_url, headers=current_headers, data=data, allow_redirects=False)
+            with open(apk_path, "rb") as f:
+                upload_res = safe_request("POST", target_url, headers=current_headers, data=f, allow_redirects=False)
             if upload_res.status_code in (301, 302, 307, 308):
                 loc = upload_res.headers.get("Location") or upload_res.headers.get("location")
                 if not loc:

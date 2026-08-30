@@ -295,50 +295,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       children: [
         const SizedBox(height: 10),
 
-        // 1. Header: Story Title + Chapter Subtitle + Sleep Timer Badge
+        // 1. Header: Story Title + Chapter Subtitle + Sleep Timer Badge + Bookmark Icon
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Icon Bookmark (Góc trên bên trái, đánh dấu trang đang đọc)
-              if (appState.hasActiveChapter) ...[
-                IconButton(
-                  icon: Icon(
-                    appState.isCurrentChapterBookmarked
-                        ? Icons.bookmark_rounded
-                        : Icons.bookmark_border_rounded,
-                    color: appState.isCurrentChapterBookmarked
-                        ? Colors.amber.shade600
-                        : colors.textSecondary,
-                    size: 22,
-                  ),
-                  tooltip: appState.isCurrentChapterBookmarked
-                      ? 'Đã đánh dấu chương này (Chạm để bỏ đánh dấu)'
-                      : 'Đánh dấu chương đang đọc',
-                  splashRadius: 18,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  onPressed: () async {
-                    final bookmarked = await appState.toggleBookmarkCurrentChapter();
-                    if (context.mounted) {
-                      if (bookmarked) {
-                        AppToast.showSuccess(
-                          context,
-                          'Đã đánh dấu Chương ${appState.currentChapter?.chapterNumber}',
-                        );
-                      } else {
-                        AppToast.showInfo(
-                          context,
-                          'Đã bỏ đánh dấu Chương ${appState.currentChapter?.chapterNumber}',
-                        );
-                      }
-                    }
-                  },
-                ),
-                const SizedBox(width: 4),
-              ],
-
               // Tiêu đề truyện & Tên chương bên dưới
               Expanded(
                 child: Tooltip(
@@ -463,6 +425,44 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ],
                     ),
                   ),
+                ),
+              ],
+
+              // Icon Bookmark (Góc trên bên phải, đánh dấu trang đang đọc)
+              if (appState.hasActiveChapter) ...[
+                const SizedBox(width: 6),
+                IconButton(
+                  icon: Icon(
+                    appState.isCurrentChapterBookmarked
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_border_rounded,
+                    color: appState.isCurrentChapterBookmarked
+                        ? Colors.amber.shade600
+                        : colors.textSecondary,
+                    size: 22,
+                  ),
+                  tooltip: appState.isCurrentChapterBookmarked
+                      ? 'Đã đánh dấu chương này (Chạm để bỏ đánh dấu)'
+                      : 'Đánh dấu chương đang đọc',
+                  splashRadius: 18,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  onPressed: () async {
+                    final bookmarked = await appState.toggleBookmarkCurrentChapter();
+                    if (context.mounted) {
+                      if (bookmarked) {
+                        AppToast.showSuccess(
+                          context,
+                          'Đã đánh dấu Chương ${appState.currentChapter?.chapterNumber}',
+                        );
+                      } else {
+                        AppToast.showInfo(
+                          context,
+                          'Đã bỏ đánh dấu Chương ${appState.currentChapter?.chapterNumber}',
+                        );
+                      }
+                    }
+                  },
                 ),
               ],
             ],

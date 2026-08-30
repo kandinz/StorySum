@@ -785,8 +785,10 @@ class _ChapterListModalState extends State<ChapterListModal> {
                   },
                   child: Container(
                     color: isCurrent ? colors.primary.withValues(alpha: 0.08) : Colors.transparent,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8.5),
+                    constraints: const BoxConstraints(minHeight: 38),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
                           child: Text(
@@ -801,28 +803,31 @@ class _ChapterListModalState extends State<ChapterListModal> {
                           ),
                         ),
                         if (isBookmarked) ...[
-                          const SizedBox(width: 4),
-                          IconButton(
-                            icon: Icon(
-                              Icons.bookmark_rounded,
-                              size: 17,
-                              color: Colors.amber.shade600,
+                          const SizedBox(width: 6),
+                          Tooltip(
+                            message: 'Bỏ đánh dấu',
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {
+                                appState.toggleBookmark(
+                                  chapter.storyTitle,
+                                  chapter.chapterNumber,
+                                  chapter.title,
+                                );
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+                                child: Icon(
+                                  Icons.bookmark_rounded,
+                                  size: 17,
+                                  color: Colors.amber.shade600,
+                                ),
+                              ),
                             ),
-                            tooltip: 'Bỏ đánh dấu',
-                            splashRadius: 14,
-                            constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                            padding: EdgeInsets.zero,
-                            onPressed: () {
-                              appState.toggleBookmark(
-                                chapter.storyTitle,
-                                chapter.chapterNumber,
-                                chapter.title,
-                              );
-                            },
                           ),
                         ],
                         if (isCurrent) ...[
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(

@@ -1394,6 +1394,7 @@ class AppStateProvider extends ChangeNotifier {
         chapterNumber: chapter.chapterNumber,
         type: 'content',
         voiceId: settings.selectedVoiceId,
+        voice: settings.currentVoice,
       );
 
       // Kiểm tra xem đã có bản tóm tắt trong DB chưa để hiển thị sẵn
@@ -1407,6 +1408,7 @@ class AppStateProvider extends ChangeNotifier {
           chapterNumber: chapter.chapterNumber,
           type: 'summary',
           voiceId: settings.selectedVoiceId,
+          voice: settings.currentVoice,
         );
       } else {
         _currentSummary = null;
@@ -1573,8 +1575,11 @@ class AppStateProvider extends ChangeNotifier {
   }) async {
     // 1. Ghi nhận trạng thái phát trước đó và dừng phát audio của giọng cũ
     final wasPlaying = player != null && (player.isPlaying || player.currentAudioPath != null);
-    if (player != null && player.isPlaying) {
-      await player.stop(resetPause: false);
+    if (player != null) {
+      if (player.isPlaying) {
+        await player.stop(resetPause: false);
+      }
+      player.clearCurrentAudio();
     }
 
     // 2. Hủy các tiến trình tạo audio của giọng cũ
@@ -1639,14 +1644,21 @@ class AppStateProvider extends ChangeNotifier {
       );
     }
 
-    notifyListeners();
-
-    // 5. Nếu đang phát trước đó -> nạp audio câu đang phát và phát lại câu đó ngay, đồng thời nạp tiếp các câu tiếp theo & chương tiếp theo
+    // 5. Xác định index câu hiện tại
     final targetList = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
     int targetIdx = _activeSentenceIndex ?? (_activeAudioSource == AudioSourceType.summary ? _currentSummarySentenceIndex : _currentContentSentenceIndex);
     targetIdx = getEffectiveSentenceIndex(targetIdx, targetList.length);
+    _activeSentenceIndex = targetIdx;
+    if (_activeAudioSource == AudioSourceType.summary) {
+      _currentSummarySentenceIndex = targetIdx;
+    } else {
+      _currentContentSentenceIndex = targetIdx;
+    }
 
-    if (wasPlaying && !player.isPausedByUser) {
+    notifyListeners();
+
+    // 6. Phát lại ngay câu hiện tại nếu trước đó đang phát, hoặc chuẩn bị sẵn audio câu đó nếu đang pause
+    if (player != null && wasPlaying && !player.isPausedByUser) {
       if (targetList.isNotEmpty) {
         // A. Load audio và phát lại câu đang phát theo giọng đọc mới
         await playSentence(
@@ -1682,6 +1694,26 @@ class AppStateProvider extends ChangeNotifier {
         );
       } else {
         _preloadNextChapter(settings: settings, player: player);
+      }
+    } else {
+      // Nếu đang tạm dừng (pause), chuẩn bị trước câu hiện tại với giọng mới để sẵn sàng khi bấm Play
+      if (targetList.isNotEmpty && targetIdx < targetList.length && !targetList[targetIdx].hasAudio) {
+        Future.microtask(() async {
+          final path = await _synthesizeSingleSentence(
+            sentence: targetList[targetIdx],
+            chapter: _currentChapter!,
+            settings: settings,
+            audioType: _activeAudioSource == AudioSourceType.summary ? 'summary' : 'content',
+          );
+          if (path != null && _currentChapter != null) {
+            if (_activeAudioSource == AudioSourceType.summary && targetIdx < _summarySentences.length) {
+              _summarySentences[targetIdx] = _summarySentences[targetIdx].copyWith(audioPath: path);
+            } else if (_activeAudioSource == AudioSourceType.content && targetIdx < _contentSentences.length) {
+              _contentSentences[targetIdx] = _contentSentences[targetIdx].copyWith(audioPath: path);
+            }
+            notifyListeners();
+          }
+        });
       }
     }
   }
@@ -2141,9 +2173,15 @@ class AppStateProvider extends ChangeNotifier {
     }
 
     // 3. Nếu đang tạm dừng và cùng nguồn audio trước đó -> Tiếp tục phát và nạp trước lookahead
+    final currentList = targetSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
+    final curSentenceIdx = _activeSentenceIndex ?? (targetSource == AudioSourceType.summary ? _currentSummarySentenceIndex : _currentContentSentenceIndex);
+    final curSentenceHasAudio = (curSentenceIdx >= 0 && curSentenceIdx < currentList.length) ? currentList[curSentenceIdx].hasAudio : false;
+
     if (player.currentAudioPath != null &&
         _activeSentenceIndex != null &&
         _activeAudioSource == targetSource &&
+        curSentenceHasAudio &&
+        player.currentAudioPath == currentList[curSentenceIdx].audioPath &&
         player.isPausedByUser) {
       await player.play();
       ensureLookaheadAudio(
@@ -2329,6 +2367,7 @@ class AppStateProvider extends ChangeNotifier {
         chapterNumber: _currentChapter!.chapterNumber,
         type: 'summary',
         voiceId: settings.selectedVoiceId,
+        voice: settings.currentVoice,
       );
       _currentStatusMessage = 'Đã tóm tắt xong!';
     } catch (e) {
@@ -2468,6 +2507,7 @@ class AppStateProvider extends ChangeNotifier {
         chapterNumber: chapter.chapterNumber,
         type: 'summary',
         voiceId: settings.selectedVoiceId,
+        voice: settings.currentVoice,
       );
       final contentSentences = await _attachExistingAudioFiles(
         sentences: rawContent,
@@ -2475,6 +2515,7 @@ class AppStateProvider extends ChangeNotifier {
         chapterNumber: chapter.chapterNumber,
         type: 'content',
         voiceId: settings.selectedVoiceId,
+        voice: settings.currentVoice,
       );
 
       final preloaded = PreloadedChapter(
@@ -2655,6 +2696,7 @@ class AppStateProvider extends ChangeNotifier {
         chapterNumber: chapter.chapterNumber,
         type: 'summary',
         voiceId: settings.selectedVoiceId,
+        voice: settings.currentVoice,
       );
       final contentSentences = await _attachExistingAudioFiles(
         sentences: rawContent,
@@ -2662,6 +2704,7 @@ class AppStateProvider extends ChangeNotifier {
         chapterNumber: chapter.chapterNumber,
         type: 'content',
         voiceId: settings.selectedVoiceId,
+        voice: settings.currentVoice,
       );
 
       // Lưu vào thư viện Đã Lưu
@@ -2914,6 +2957,7 @@ class AppStateProvider extends ChangeNotifier {
         chapterNumber: chapter.chapterNumber,
         type: 'content',
         voiceId: settings.selectedVoiceId,
+        voice: settings.currentVoice,
       );
 
       // Nạp tóm tắt AI từ Database / Item
@@ -2944,6 +2988,7 @@ class AppStateProvider extends ChangeNotifier {
         chapterNumber: chapter.chapterNumber,
         type: 'summary',
         voiceId: settings.selectedVoiceId,
+        voice: settings.currentVoice,
       );
 
       // Xác định vị trí câu cuối đã phát cho cả Tóm tắt và Nội dung

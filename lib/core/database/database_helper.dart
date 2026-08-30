@@ -234,12 +234,6 @@ class DatabaseHelper {
   }) async {
     if (chapters.isEmpty) return;
     final db = await database;
-    final storyTitle = chapters.first.storyTitle;
-    await db.delete(
-      AppConstants.tableChapters,
-      where: 'story_title = ?',
-      whereArgs: [storyTitle],
-    );
 
     const chunkSize = 500;
     for (int i = 0; i < chapters.length; i += chunkSize) {
@@ -247,6 +241,11 @@ class DatabaseHelper {
       final chunk = chapters.sublist(i, end);
       final batch = db.batch();
       for (final chapter in chunk) {
+        batch.delete(
+          AppConstants.tableChapters,
+          where: 'story_title = ? AND chapter_number = ?',
+          whereArgs: [chapter.storyTitle, chapter.chapterNumber],
+        );
         batch.insert(
           AppConstants.tableChapters,
           chapter.toMap(),
@@ -380,12 +379,6 @@ class DatabaseHelper {
   }) async {
     if (audios.isEmpty) return;
     final db = await database;
-    final storyTitle = audios.first.storyTitle;
-    await db.delete(
-      AppConstants.tableAudios,
-      where: 'story_title = ?',
-      whereArgs: [storyTitle],
-    );
 
     const chunkSize = 500;
     for (int i = 0; i < audios.length; i += chunkSize) {
@@ -393,6 +386,11 @@ class DatabaseHelper {
       final chunk = audios.sublist(i, end);
       final batch = db.batch();
       for (final audio in chunk) {
+        batch.delete(
+          AppConstants.tableAudios,
+          where: 'story_title = ? AND chapter_number = ?',
+          whereArgs: [audio.storyTitle, audio.chapterNumber],
+        );
         batch.insert(
           AppConstants.tableAudios,
           audio.toMap(),

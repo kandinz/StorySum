@@ -149,6 +149,12 @@ class PlayerStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearCurrentAudio() {
+    _currentAudioPath = null;
+    _currentSentenceIndex = null;
+    notifyListeners();
+  }
+
   Future<void> stop({bool resetPause = false}) async {
     if (resetPause) {
       _isPausedByUser = false;
@@ -159,6 +165,7 @@ class PlayerStateProvider extends ChangeNotifier {
     _isPlaying = false;
     _currentPosition = Duration.zero;
     _currentSentenceIndex = null;
+    _currentAudioPath = null;
     notifyListeners();
   }
 
