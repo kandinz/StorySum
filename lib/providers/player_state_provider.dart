@@ -87,10 +87,14 @@ class PlayerStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  ProcessingState? _lastProcessingState;
+
   void _initListeners() {
     playerService.playerStateStream.listen((state) {
       _isPlaying = state.playing;
-      if (state.processingState == ProcessingState.completed) {
+      final prev = _lastProcessingState;
+      _lastProcessingState = state.processingState;
+      if (state.processingState == ProcessingState.completed && prev != ProcessingState.completed) {
         if (!_isPausedByUser) {
           _playbackCompleteController.add(null);
         }
@@ -130,6 +134,7 @@ class PlayerStateProvider extends ChangeNotifier {
     List<WordBoundary>? boundaries,
   }) async {
     _isPausedByUser = false;
+    _lastProcessingState = null;
     _currentTitle = title;
     _currentStoryTitle = storyTitle;
     _currentChapterNumber = chapterNumber;
@@ -152,10 +157,12 @@ class PlayerStateProvider extends ChangeNotifier {
   void clearCurrentAudio() {
     _currentAudioPath = null;
     _currentSentenceIndex = null;
+    _lastProcessingState = null;
     notifyListeners();
   }
 
   Future<void> stop({bool resetPause = false}) async {
+    _lastProcessingState = null;
     if (resetPause) {
       _isPausedByUser = false;
     }

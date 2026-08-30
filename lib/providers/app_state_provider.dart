@@ -346,7 +346,7 @@ class AppStateProvider extends ChangeNotifier {
     return splitIntoSentences(content);
   }
 
-  /// Quét nhanh và gắn ngay tức thì các file audio câu đã tồn tại trên đĩa (0s delay)
+  /// Quét nhanh và gắn ngay tức thì các file audio câu đã tồn tại trên đĩa của đúng giọng đọc hiện tại (0s delay)
   Future<List<SentenceItem>> _attachExistingAudioFiles({
     required List<SentenceItem> sentences,
     required String storyTitle,
@@ -362,10 +362,6 @@ class AppStateProvider extends ChangeNotifier {
 
     final List<SentenceItem> result = [];
     for (final s in sentences) {
-      if (s.hasAudio) {
-        result.add(s);
-        continue;
-      }
       try {
         final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
           storyTitle: storyTitle,
@@ -380,10 +376,11 @@ class AppStateProvider extends ChangeNotifier {
         if (await file.exists() && await file.length() > 500) {
           result.add(s.copyWith(audioPath: expectedPath, isGenerating: false, hasError: false));
         } else {
-          result.add(s);
+          // File giọng hiện tại chưa có -> reset audioPath về null để tránh phát nhầm file giọng cũ
+          result.add(s.copyWith(audioPath: null, isGenerating: false, hasError: false));
         }
       } catch (_) {
-        result.add(s);
+        result.add(s.copyWith(audioPath: null, isGenerating: false));
       }
     }
     return result;
@@ -1871,10 +1868,13 @@ class AppStateProvider extends ChangeNotifier {
           voiceId: settings.selectedVoiceId,
           extension: extension,
         );
-        if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {
-          _summarySentences[i] = _summarySentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
-          notifyListeners();
-        } else if (!_summarySentences[i].hasAudio && !_summarySentences[i].isGenerating) {
+        final bool fileExists = await File(expectedPath).exists() && await File(expectedPath).length() > 500;
+        if (fileExists) {
+          if (_summarySentences[i].audioPath != expectedPath) {
+            _summarySentences[i] = _summarySentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
+            notifyListeners();
+          }
+        } else if (!_summarySentences[i].isGenerating) {
           _summarySentences[i] = _summarySentences[i].copyWith(isGenerating: true);
           notifyListeners();
 
@@ -1946,10 +1946,13 @@ class AppStateProvider extends ChangeNotifier {
           voiceId: settings.selectedVoiceId,
           extension: extension,
         );
-        if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {
-          _contentSentences[i] = _contentSentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
-          notifyListeners();
-        } else if (!_contentSentences[i].hasAudio && !_contentSentences[i].isGenerating) {
+        final bool fileExists = await File(expectedPath).exists() && await File(expectedPath).length() > 500;
+        if (fileExists) {
+          if (_contentSentences[i].audioPath != expectedPath) {
+            _contentSentences[i] = _contentSentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
+            notifyListeners();
+          }
+        } else if (!_contentSentences[i].isGenerating) {
           _contentSentences[i] = _contentSentences[i].copyWith(isGenerating: true);
           notifyListeners();
 
@@ -2023,14 +2026,17 @@ class AppStateProvider extends ChangeNotifier {
           extension: extension,
         );
 
-        if (await File(expectedPath).exists() && await File(expectedPath).length() > 500) {
-          if (sourceType == AudioSourceType.summary) {
-            _summarySentences[i] = _summarySentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
-          } else {
-            _contentSentences[i] = _contentSentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
+        final bool fileExists = await File(expectedPath).exists() && await File(expectedPath).length() > 500;
+        if (fileExists) {
+          if (list[i].audioPath != expectedPath) {
+            if (sourceType == AudioSourceType.summary) {
+              _summarySentences[i] = _summarySentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
+            } else {
+              _contentSentences[i] = _contentSentences[i].copyWith(audioPath: expectedPath, isGenerating: false, hasError: false);
+            }
+            notifyListeners();
           }
-          notifyListeners();
-        } else if (!list[i].hasAudio && !list[i].isGenerating) {
+        } else if (!list[i].isGenerating) {
           if (sourceType == AudioSourceType.summary) {
             _summarySentences[i] = _summarySentences[i].copyWith(isGenerating: true);
           } else {
@@ -2086,7 +2092,7 @@ class AppStateProvider extends ChangeNotifier {
     });
   }
 
-  /// Phát một câu cụ thể (Ưu tiên tạo ngay nếu câu chưa có audio)
+  /// Phát một câu cụ thể (Ưu tiên tạo ngay nếu câu chưa có audio của giọng hiện tại)
   Future<void> playSentence({
     required AudioSourceType sourceType,
     required int sentenceIndex,
@@ -2131,10 +2137,23 @@ class AppStateProvider extends ChangeNotifier {
 
     var item = list[sentenceIndex];
 
-    // Nếu câu này chưa có audio, ưu tiên sinh ngay lập tức
-    // (Nếu ensureLookaheadAudio đang synthesis cùng câu và bị hủy bởi ++sessionId,
-    //  nó sẽ reset isGenerating=false và playSentence synthesis lại từ disk cache nếu file đã có)
-    if (!item.hasAudio) {
+    final voice = settings.currentVoice;
+    final extension = UnifiedTtsService.getAudioExtension(voice);
+    final expectedPath = await AudioExporter.generateSentenceAudioFilePath(
+      storyTitle: _currentChapter!.storyTitle,
+      chapterNumber: _currentChapter!.chapterNumber,
+      type: sourceType == AudioSourceType.summary ? 'summary' : 'content',
+      sentenceIndex: sentenceIndex,
+      sentenceText: item.text,
+      voiceId: settings.selectedVoiceId,
+      extension: extension,
+    );
+
+    final bool fileExists = await File(expectedPath).exists() && await File(expectedPath).length() > 500;
+    final bool hasCurrentVoiceAudio = item.audioPath == expectedPath && fileExists;
+
+    // Nếu câu này chưa có audio đúng của giọng hiện tại, ưu tiên sinh ngay lập tức
+    if (!hasCurrentVoiceAudio) {
       if (sourceType == AudioSourceType.summary) {
         _summarySentences[sentenceIndex] = item.copyWith(isGenerating: true);
       } else {
@@ -2185,14 +2204,19 @@ class AppStateProvider extends ChangeNotifier {
         sentenceIndex: sentenceIndex,
       );
     } else if ((!item.hasAudio || item.hasError) && _activeSentenceIndex == sentenceIndex) {
-      // Nếu câu này không thể sinh audio, tự động chuyển câu kế tiếp để không bị đứng luồng phát
-      if (sentenceIndex + 1 < list.length) {
-        await playSentence(
-          sourceType: sourceType,
-          sentenceIndex: sentenceIndex + 1,
-          settings: settings,
-          player: player,
-        );
+      // Chỉ bỏ qua nếu câu thực sự không có chữ hoặc rỗng
+      String clean = TextNormalizer.normalize(item.text).replaceAll('•', '').trim();
+      if (clean.isEmpty || !RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(clean)) {
+        if (sentenceIndex + 1 < list.length) {
+          await playSentence(
+            sourceType: sourceType,
+            sentenceIndex: sentenceIndex + 1,
+            settings: settings,
+            player: player,
+          );
+        }
+      } else {
+        AppToast.showError(null, 'Không thể tạo âm thanh câu ${sentenceIndex + 1}. Vui lòng thử lại.');
       }
       return;
     }
@@ -2206,57 +2230,64 @@ class AppStateProvider extends ChangeNotifier {
     );
   }
 
+  bool _isHandlingSentenceComplete = false;
 
   /// Xử lý khi kết thúc phát một câu audio -> Tự động phát câu tiếp theo liên tục không nghỉ
   Future<void> handleSentenceComplete({
     required SettingsProvider settings,
     required PlayerStateProvider player,
   }) async {
-    if (_activeSentenceIndex == null) return;
+    if (_isHandlingSentenceComplete) return;
+    _isHandlingSentenceComplete = true;
+    try {
+      if (_activeSentenceIndex == null) return;
 
-    // Nếu người dùng đã chủ động tạm dừng (pause) -> KHÔNG tự chuyển câu
-    if (player.isPausedByUser) {
-      return;
-    }
+      // Nếu người dùng đã chủ động tạm dừng (pause) -> KHÔNG tự chuyển câu
+      if (player.isPausedByUser) {
+        return;
+      }
 
-    final list = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
-    int nextIndex = _activeSentenceIndex! + 1;
+      final list = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
+      int nextIndex = _activeSentenceIndex! + 1;
 
-    // Bỏ qua các câu không có chữ nếu có
-    while (nextIndex < list.length &&
-        (!RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(list[nextIndex].text) ||
-         list[nextIndex].text.trim().isEmpty)) {
-      nextIndex++;
-    }
+      // Bỏ qua các câu không có chữ nếu có
+      while (nextIndex < list.length &&
+          (!RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(list[nextIndex].text) ||
+           list[nextIndex].text.trim().isEmpty)) {
+        nextIndex++;
+      }
 
-    if (nextIndex < list.length) {
-      // Tự động phát câu tiếp theo liên tục không nghỉ
-      await playSentence(
-        sourceType: _activeAudioSource,
-        sentenceIndex: nextIndex,
-        settings: settings,
-        player: player,
-      );
-    } else {
-      // Đã phát hết toàn bộ các câu của phần hiện tại!
-      _activeSentenceIndex = null;
-      notifyListeners();
-
-      // Lưu trạng thái đã hoàn thành chương (sentenceIndex = list.length -> biểu thị 154/154)
-      if (_currentChapter != null) {
-        await _saveLastPlayedPosition(
-          storyTitle: _currentChapter!.storyTitle,
-          chapterNumber: _currentChapter!.chapterNumber,
-          sentenceIndex: list.length,
+      if (nextIndex < list.length) {
+        // Tự động phát câu tiếp theo liên tục không nghỉ
+        await playSentence(
           sourceType: _activeAudioSource,
-          storyUrl: _currentChapter!.sourceUrl,
+          sentenceIndex: nextIndex,
+          settings: settings,
+          player: player,
         );
-      }
+      } else {
+        // Đã phát hết toàn bộ các câu của phần hiện tại!
+        _activeSentenceIndex = null;
+        notifyListeners();
 
-      // Nếu bật tự chuyển chương -> chuyển chương tiếp theo và tiếp tục phát
-      if (settings.autoNextChapter && !_isProcessing) {
-        await goToNextChapter(settings: settings, player: player, isAutoNext: true);
+        // Lưu trạng thái đã hoàn thành chương (sentenceIndex = list.length -> biểu thị 154/154)
+        if (_currentChapter != null) {
+          await _saveLastPlayedPosition(
+            storyTitle: _currentChapter!.storyTitle,
+            chapterNumber: _currentChapter!.chapterNumber,
+            sentenceIndex: list.length,
+            sourceType: _activeAudioSource,
+            storyUrl: _currentChapter!.sourceUrl,
+          );
+        }
+
+        // Nếu bật tự chuyển chương -> chuyển chương tiếp theo và tiếp tục phát
+        if (settings.autoNextChapter && !_isProcessing) {
+          await goToNextChapter(settings: settings, player: player, isAutoNext: true);
+        }
       }
+    } finally {
+      _isHandlingSentenceComplete = false;
     }
   }
 
