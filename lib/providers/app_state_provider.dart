@@ -1570,7 +1570,7 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   /// Xử lý đồng bộ lại trạng thái âm thanh khi đổi giọng đọc:
-  /// - Tạm dừng audio (pause)
+  /// - Dừng hoàn toàn audio (stop) để đảm bảo không phát lại giọng cũ
   /// - Xóa sạch các file audio của giọng cũ chạy ngầm (non-blocking)
   /// - Nạp cache và chuẩn bị sẵn sàng phát theo giọng mới
   Future<void> onVoiceChanged({
@@ -1578,10 +1578,13 @@ class AppStateProvider extends ChangeNotifier {
     PlayerStateProvider? player,
     String? oldVoiceId,
   }) async {
-    // 1. Tạm dừng ngay audio đang phát (Pause audio) và xóa audio hiện tại trên player
+    // 1. Dừng hoàn toàn audio đang phát và reset toàn bộ player state
+    // Dùng stop(resetPause: true) thay vì pause() để:
+    //   - just_audio player về trạng thái idle (không còn giữ audio giọng cũ)
+    //   - isPausedByUser = false (UI hiện nút Play, không phải trạng thái pause)
+    //   - currentAudioPath = null (đảm bảo không vào nhánh resume giọng cũ khi bấm Play)
     if (player != null) {
-      await player.pause();
-      player.clearCurrentAudio();
+      await player.stop(resetPause: true);
     }
 
     // 2. Hủy các tiến trình tạo audio của phiên cũ ngay lập tức
@@ -1832,8 +1835,16 @@ class AppStateProvider extends ChangeNotifier {
             audioType: 'summary',
           );
 
-          if (sessionId != _generationSessionId) return;
+          // Nếu session bị hủy trong khi synthesis → reset isGenerating để tránh stuck
+          if (sessionId != _generationSessionId) {
+            if (i < _summarySentences.length && _summarySentences[i].isGenerating) {
+              _summarySentences[i] = _summarySentences[i].copyWith(isGenerating: false);
+              notifyListeners();
+            }
+            return;
+          }
           if (!force && (!player.isPlaying || player.isPausedByUser)) return;
+
 
           _summarySentences[i] = _summarySentences[i].copyWith(
             audioPath: path,
@@ -1895,8 +1906,16 @@ class AppStateProvider extends ChangeNotifier {
             audioType: 'content',
           );
 
-          if (sessionId != _generationSessionId) return;
+          // Nếu session bị hủy trong khi synthesis → reset isGenerating để tránh stuck
+          if (sessionId != _generationSessionId) {
+            if (i < _contentSentences.length && _contentSentences[i].isGenerating) {
+              _contentSentences[i] = _contentSentences[i].copyWith(isGenerating: false);
+              notifyListeners();
+            }
+            return;
+          }
           if (!force && (!player.isPlaying || player.isPausedByUser)) return;
+
 
           _contentSentences[i] = _contentSentences[i].copyWith(
             audioPath: path,
@@ -1968,7 +1987,21 @@ class AppStateProvider extends ChangeNotifier {
             audioType: sourceType == AudioSourceType.summary ? 'summary' : 'content',
           );
 
-          if (sessionId != _generationSessionId || _currentChapter == null) return;
+          // Nếu session bị hủy trong khi synthesis → reset isGenerating để tránh stuck
+          if (sessionId != _generationSessionId || _currentChapter == null) {
+            if (sourceType == AudioSourceType.summary && i < _summarySentences.length) {
+              if (_summarySentences[i].isGenerating) {
+                _summarySentences[i] = _summarySentences[i].copyWith(isGenerating: false);
+                notifyListeners();
+              }
+            } else if (i < _contentSentences.length) {
+              if (_contentSentences[i].isGenerating) {
+                _contentSentences[i] = _contentSentences[i].copyWith(isGenerating: false);
+                notifyListeners();
+              }
+            }
+            return;
+          }
           if (!force && (!player.isPlaying || player.isPausedByUser)) return;
 
           if (sourceType == AudioSourceType.summary) {
@@ -2036,6 +2069,8 @@ class AppStateProvider extends ChangeNotifier {
     var item = list[sentenceIndex];
 
     // Nếu câu này chưa có audio, ưu tiên sinh ngay lập tức
+    // (Nếu ensureLookaheadAudio đang synthesis cùng câu và bị hủy bởi ++sessionId,
+    //  nó sẽ reset isGenerating=false và playSentence synthesis lại từ disk cache nếu file đã có)
     if (!item.hasAudio) {
       if (sourceType == AudioSourceType.summary) {
         _summarySentences[sentenceIndex] = item.copyWith(isGenerating: true);
@@ -2071,6 +2106,7 @@ class AppStateProvider extends ChangeNotifier {
       notifyListeners();
     }
 
+
     if (currentSession != _generationSessionId) return;
 
     // Phát câu ngay lập tức (resets và phát từ đầu câu 0s)
@@ -2105,6 +2141,7 @@ class AppStateProvider extends ChangeNotifier {
       player: player,
     );
   }
+
 
   /// Xử lý khi kết thúc phát một câu audio -> Tự động phát câu tiếp theo liên tục không nghỉ
   Future<void> handleSentenceComplete({
