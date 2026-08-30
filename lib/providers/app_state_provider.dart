@@ -67,6 +67,7 @@ class AppStateProvider extends ChangeNotifier {
   int _currentContentSentenceIndex = 0;
   AudioSourceType _activeAudioSource = AudioSourceType.summary;
   int _generationSessionId = 0;
+  final Map<String, Future<String?>> _inFlightSynthesis = {};
 
   // Last played tracking
   String? _lastPlayedStoryTitle;
@@ -1710,7 +1711,7 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
-  /// Tổng hợp TTS cho một câu đơn lẻ
+  /// Tổng hợp TTS cho một câu đơn lẻ (có chống xung đột song song _inFlightSynthesis)
   Future<String?> _synthesizeSingleSentence({
     required SentenceItem sentence,
     required ChapterModel chapter,
@@ -1741,18 +1742,60 @@ class AppStateProvider extends ChangeNotifier {
         return null;
       }
 
+      // Tái sử dụng tiến trình nếu câu này đang được tổng hợp ở luồng khác
+      if (_inFlightSynthesis.containsKey(expectedPath)) {
+        return await _inFlightSynthesis[expectedPath]!;
+      }
+
+      final future = _doSynthesizeSingleSentence(
+        cleanText: cleanText,
+        voice: voice,
+        expectedPath: expectedPath,
+        chapter: chapter,
+        audioType: audioType,
+        sentenceIndex: sentence.index,
+        speed: settings.speed,
+      );
+
+      _inFlightSynthesis[expectedPath] = future;
+      try {
+        return await future;
+      } finally {
+        _inFlightSynthesis.remove(expectedPath);
+      }
+    } catch (e) {
+      print('Lỗi synthesize câu ${sentence.index} ($audioType): $e');
+      return null;
+    }
+  }
+
+  Future<String?> _doSynthesizeSingleSentence({
+    required String cleanText,
+    required VoiceModel voice,
+    required String expectedPath,
+    required ChapterModel chapter,
+    required String audioType,
+    required int sentenceIndex,
+    required double speed,
+  }) async {
+    try {
+      final file = File(expectedPath);
+      if (await file.exists() && await file.length() > 500) {
+        return expectedPath;
+      }
+
       final result = await unifiedTtsService.synthesize(
         text: cleanText,
         voice: voice,
         outputFilePath: expectedPath,
         storyTitle: chapter.storyTitle,
         chapterNumber: chapter.chapterNumber,
-        audioType: '${audioType}_s${sentence.index}',
-        speed: settings.speed,
+        audioType: '${audioType}_s$sentenceIndex',
+        speed: speed,
       );
       return result.audioFilePath;
     } catch (e) {
-      print('Lỗi synthesize câu ${sentence.index} ($audioType): $e');
+      print('Lỗi synthesize single sentence ($expectedPath): $e');
       return null;
     }
   }
@@ -1835,10 +1878,14 @@ class AppStateProvider extends ChangeNotifier {
             audioType: 'summary',
           );
 
-          // Nếu session bị hủy trong khi synthesis → reset isGenerating để tránh stuck
+          // Nếu session bị hủy trong khi synthesis → lưu audio nếu có và reset isGenerating
           if (sessionId != _generationSessionId) {
-            if (i < _summarySentences.length && _summarySentences[i].isGenerating) {
-              _summarySentences[i] = _summarySentences[i].copyWith(isGenerating: false);
+            if (i < _summarySentences.length) {
+              _summarySentences[i] = _summarySentences[i].copyWith(
+                audioPath: path,
+                isGenerating: false,
+                hasError: path == null,
+              );
               notifyListeners();
             }
             return;
@@ -1906,10 +1953,14 @@ class AppStateProvider extends ChangeNotifier {
             audioType: 'content',
           );
 
-          // Nếu session bị hủy trong khi synthesis → reset isGenerating để tránh stuck
+          // Nếu session bị hủy trong khi synthesis → lưu audio nếu có và reset isGenerating
           if (sessionId != _generationSessionId) {
-            if (i < _contentSentences.length && _contentSentences[i].isGenerating) {
-              _contentSentences[i] = _contentSentences[i].copyWith(isGenerating: false);
+            if (i < _contentSentences.length) {
+              _contentSentences[i] = _contentSentences[i].copyWith(
+                audioPath: path,
+                isGenerating: false,
+                hasError: path == null,
+              );
               notifyListeners();
             }
             return;
@@ -1987,18 +2038,22 @@ class AppStateProvider extends ChangeNotifier {
             audioType: sourceType == AudioSourceType.summary ? 'summary' : 'content',
           );
 
-          // Nếu session bị hủy trong khi synthesis → reset isGenerating để tránh stuck
+          // Nếu session bị hủy trong khi synthesis → lưu audio nếu có và reset isGenerating
           if (sessionId != _generationSessionId || _currentChapter == null) {
             if (sourceType == AudioSourceType.summary && i < _summarySentences.length) {
-              if (_summarySentences[i].isGenerating) {
-                _summarySentences[i] = _summarySentences[i].copyWith(isGenerating: false);
-                notifyListeners();
-              }
+              _summarySentences[i] = _summarySentences[i].copyWith(
+                audioPath: path,
+                isGenerating: false,
+                hasError: path == null,
+              );
+              notifyListeners();
             } else if (i < _contentSentences.length) {
-              if (_contentSentences[i].isGenerating) {
-                _contentSentences[i] = _contentSentences[i].copyWith(isGenerating: false);
-                notifyListeners();
-              }
+              _contentSentences[i] = _contentSentences[i].copyWith(
+                audioPath: path,
+                isGenerating: false,
+                hasError: path == null,
+              );
+              notifyListeners();
             }
             return;
           }
