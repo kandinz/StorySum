@@ -1577,13 +1577,11 @@ class AppStateProvider extends ChangeNotifier {
     PlayerStateProvider? player,
     String? oldVoiceId,
   }) async {
-    // 1. Dừng hoàn toàn audio đang phát và reset toàn bộ player state
-    // Dùng stop(resetPause: true) thay vì pause() để:
-    //   - just_audio player về trạng thái idle (không còn giữ audio giọng cũ)
-    //   - isPausedByUser = false (UI hiện nút Play, không phải trạng thái pause)
-    //   - currentAudioPath = null (đảm bảo không vào nhánh resume giọng cũ khi bấm Play)
-    if (player != null) {
-      await player.stop(resetPause: true);
+    final wasPlaying = player != null && player.isPlaying && !player.isPausedByUser;
+
+    // 1. Dừng audio của giọng cũ ngay lập tức (không reset pause flag để nếu đang phát thì phát tiếp)
+    if (player != null && player.isPlaying) {
+      await player.stop(resetPause: false);
     }
 
     // 2. Hủy các tiến trình tạo audio của phiên cũ ngay lập tức
@@ -1686,16 +1684,24 @@ class AppStateProvider extends ChangeNotifier {
 
     notifyListeners();
 
-    // 8. Chuẩn bị / nạp trước nhẹ câu hiện tại & tiếp theo (Lookahead) theo giọng mới khi đang pause
-    // Khi người dùng bấm Play sẽ phát ngay theo giọng mới mà không phải đợi process khác
+    // 8. Nếu trước đó đang phát -> Tiếp tục phát ngay lập tức bằng giọng mới từ câu hiện tại!
     if (targetList.isNotEmpty && player != null) {
-      ensureLookaheadAudio(
-        sourceType: _activeAudioSource,
-        fromIndex: targetIdx,
-        settings: settings,
-        player: player,
-        force: true,
-      );
+      if (wasPlaying) {
+        await playSentence(
+          sourceType: _activeAudioSource,
+          sentenceIndex: targetIdx,
+          settings: settings,
+          player: player,
+        );
+      } else {
+        ensureLookaheadAudio(
+          sourceType: _activeAudioSource,
+          fromIndex: targetIdx,
+          settings: settings,
+          player: player,
+          force: true,
+        );
+      }
 
       if (_preloadedNextChapter != null) {
         _preloadAudioForChapter(
@@ -2098,6 +2104,7 @@ class AppStateProvider extends ChangeNotifier {
     required int sentenceIndex,
     required SettingsProvider settings,
     required PlayerStateProvider player,
+    bool cancelBackgroundTasks = true,
   }) async {
     if (_currentChapter == null) return;
     final list = sourceType == AudioSourceType.summary ? _summarySentences : _contentSentences;
@@ -2116,9 +2123,12 @@ class AppStateProvider extends ChangeNotifier {
     }
     notifyListeners();
 
-    // Hủy các tiến trình tạo audio của phiên cũ trước đó để ưu tiên tuyệt đối cho câu này
-    final currentSession = ++_generationSessionId;
-    TikTokTtsService.clearQueue();
+    // Hủy các tiến trình tạo audio của phiên cũ trước đó nếu là do người dùng tương tác chủ động
+    int currentSession = _generationSessionId;
+    if (cancelBackgroundTasks) {
+      currentSession = ++_generationSessionId;
+      TikTokTtsService.clearQueue();
+    }
 
     // Lưu vị trí câu cuối đã phát
     _lastPlayedStoryTitle = _currentChapter!.storyTitle;
@@ -2213,6 +2223,7 @@ class AppStateProvider extends ChangeNotifier {
             sentenceIndex: sentenceIndex + 1,
             settings: settings,
             player: player,
+            cancelBackgroundTasks: cancelBackgroundTasks,
           );
         }
       } else {
@@ -2258,12 +2269,13 @@ class AppStateProvider extends ChangeNotifier {
       }
 
       if (nextIndex < list.length) {
-        // Tự động phát câu tiếp theo liên tục không nghỉ
+        // Tự động phát câu tiếp theo liên tục không nghỉ (giữ nguyên background lookahead session)
         await playSentence(
           sourceType: _activeAudioSource,
           sentenceIndex: nextIndex,
           settings: settings,
           player: player,
+          cancelBackgroundTasks: false,
         );
       } else {
         // Đã phát hết toàn bộ các câu của phần hiện tại!
