@@ -1851,7 +1851,7 @@ class AppStateProvider extends ChangeNotifier {
     int startIndex = 0,
     bool force = false,
   }) {
-    if (!force && (!player.isPlaying || player.isPausedByUser)) return;
+    if (!force && player.isPausedByUser) return;
     Future.microtask(() async {
       final prefetchLimit = settings.audioPrefetchCount;
       final maxIndex = (startIndex + prefetchLimit < _summarySentences.length)
@@ -1860,7 +1860,7 @@ class AppStateProvider extends ChangeNotifier {
 
       for (int i = startIndex; i <= maxIndex; i++) {
         if (sessionId != _generationSessionId || i >= _summarySentences.length) return;
-        if (!force && (!player.isPlaying || player.isPausedByUser)) return;
+        if (!force && player.isPausedByUser) return;
 
         final voice = settings.currentVoice;
         final extension = UnifiedTtsService.getAudioExtension(voice);
@@ -1901,15 +1901,17 @@ class AppStateProvider extends ChangeNotifier {
             }
             return;
           }
-          if (!force && (!player.isPlaying || player.isPausedByUser)) return;
 
+          if (i < _summarySentences.length) {
+            _summarySentences[i] = _summarySentences[i].copyWith(
+              audioPath: path,
+              isGenerating: false,
+              hasError: path == null,
+            );
+            notifyListeners();
+          }
 
-          _summarySentences[i] = _summarySentences[i].copyWith(
-            audioPath: path,
-            isGenerating: false,
-            hasError: path == null,
-          );
-          notifyListeners();
+          if (!force && player.isPausedByUser) return;
 
           // Nghỉ nhẹ 50ms giữa các câu để CPU/GPU nhường luồng mượt mà cho UI
           await Future.delayed(const Duration(milliseconds: 50));
@@ -1927,7 +1929,7 @@ class AppStateProvider extends ChangeNotifier {
     int startIndex = 0,
     bool force = false,
   }) {
-    if (!force && (!player.isPlaying || player.isPausedByUser)) return;
+    if (!force && player.isPausedByUser) return;
     Future.microtask(() async {
       final prefetchLimit = settings.audioPrefetchCount;
       final maxIndex = (startIndex + prefetchLimit < _contentSentences.length)
@@ -1936,7 +1938,7 @@ class AppStateProvider extends ChangeNotifier {
 
       for (int i = startIndex; i <= maxIndex; i++) {
         if (sessionId != _generationSessionId || i >= _contentSentences.length) return;
-        if (!force && (!player.isPlaying || player.isPausedByUser)) return;
+        if (!force && player.isPausedByUser) return;
 
         final voice = settings.currentVoice;
         final extension = UnifiedTtsService.getAudioExtension(voice);
@@ -1977,15 +1979,17 @@ class AppStateProvider extends ChangeNotifier {
             }
             return;
           }
-          if (!force && (!player.isPlaying || player.isPausedByUser)) return;
 
+          if (i < _contentSentences.length) {
+            _contentSentences[i] = _contentSentences[i].copyWith(
+              audioPath: path,
+              isGenerating: false,
+              hasError: path == null,
+            );
+            notifyListeners();
+          }
 
-          _contentSentences[i] = _contentSentences[i].copyWith(
-            audioPath: path,
-            isGenerating: false,
-            hasError: path == null,
-          );
-          notifyListeners();
+          if (!force && player.isPausedByUser) return;
 
           // Nghỉ nhẹ 50ms giữa các câu để CPU/GPU nhường luồng mượt mà cho UI
           await Future.delayed(const Duration(milliseconds: 50));
@@ -2003,7 +2007,7 @@ class AppStateProvider extends ChangeNotifier {
     bool force = false,
   }) {
     if (_currentChapter == null) return;
-    if (!force && (!player.isPlaying || player.isPausedByUser)) return;
+    if (!force && player.isPausedByUser) return;
     final sessionId = _generationSessionId;
     final list = sourceType == AudioSourceType.summary ? _summarySentences : _contentSentences;
     final prefetchLimit = settings.audioPrefetchCount;
@@ -2012,7 +2016,7 @@ class AppStateProvider extends ChangeNotifier {
     Future.microtask(() async {
       for (int i = fromIndex; i <= maxIndex; i++) {
         if (sessionId != _generationSessionId || _currentChapter == null) return;
-        if (!force && (!player.isPlaying || player.isPausedByUser)) return;
+        if (!force && player.isPausedByUser) return;
         if (i < 0 || i >= list.length) continue;
 
         final voice = settings.currentVoice;
@@ -2069,15 +2073,14 @@ class AppStateProvider extends ChangeNotifier {
             }
             return;
           }
-          if (!force && (!player.isPlaying || player.isPausedByUser)) return;
 
-          if (sourceType == AudioSourceType.summary) {
+          if (sourceType == AudioSourceType.summary && i < _summarySentences.length) {
             _summarySentences[i] = _summarySentences[i].copyWith(
               audioPath: path,
               isGenerating: false,
               hasError: path == null,
             );
-          } else {
+          } else if (i < _contentSentences.length) {
             _contentSentences[i] = _contentSentences[i].copyWith(
               audioPath: path,
               isGenerating: false,
@@ -2085,6 +2088,8 @@ class AppStateProvider extends ChangeNotifier {
             );
           }
           notifyListeners();
+
+          if (!force && player.isPausedByUser) return;
           await Future.delayed(const Duration(milliseconds: 50));
         }
       }

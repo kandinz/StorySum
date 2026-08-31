@@ -49,6 +49,7 @@ class UnifiedTtsService {
           audioType: audioType,
           outputFilePath: outputFilePath,
           speed: speed,
+          isPriority: isPriority,
           onProgress: onProgress,
         );
 

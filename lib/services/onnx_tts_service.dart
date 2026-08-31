@@ -287,7 +287,7 @@ class OnnxTtsService {
     return models;
   }
 
-  /// Tổng hợp âm thanh bằng sherpa-onnx với cơ chế Mutex tuần tự hóa chống Crash
+  /// Tổng hợp âm thanh bằng sherpa-onnx với cơ chế Mutex tuần tự hóa chống Crash (có hỗ trợ ưu tiên phát ngay)
   Future<TtsSynthesisResult> synthesizeOffline({
     required String text,
     required VoiceModel voice,
@@ -296,10 +296,15 @@ class OnnxTtsService {
     String audioType = 'summary',
     String? outputFilePath,
     double speed = 1.0,
+    bool isPriority = false,
     Function(double progress)? onProgress,
   }) async {
     final completer = Completer<void>();
-    _synthesisQueueList.add(completer);
+    if (isPriority && _synthesisQueueList.length > 1) {
+      _synthesisQueueList.insert(1, completer);
+    } else {
+      _synthesisQueueList.add(completer);
+    }
 
     if (_synthesisQueueList.length > 1) {
       final index = _synthesisQueueList.indexOf(completer);
