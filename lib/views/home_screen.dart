@@ -97,9 +97,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
         // Tự động chuyển tab hiển thị theo phần đang phát
         if (appState.activeAudioSource == AudioSourceType.summary && _activeTab != StoryViewTab.summary) {
-          setState(() => _activeTab = StoryViewTab.summary);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _activeTab = StoryViewTab.summary);
+          });
         } else if (appState.activeAudioSource == AudioSourceType.content && _activeTab != StoryViewTab.content) {
-          setState(() => _activeTab = StoryViewTab.content);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _activeTab = StoryViewTab.content);
+          });
         }
 
         void attemptScroll([int retryCount = 0]) {

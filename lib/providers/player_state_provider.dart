@@ -87,57 +87,63 @@ class PlayerStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool _hasStartedPlaying = false;
-  DateTime? _lastCompletionTime;
+  bool _isReadyToComplete = false;
+  StreamSubscription? _playerStateSubscription;
+  StreamSubscription? _positionSubscription;
+  StreamSubscription? _durationSubscription;
+  StreamSubscription? _bgmPlayerStateSubscription;
 
   void _triggerPlaybackComplete() {
     if (_isPausedByUser) return;
-    final now = DateTime.now();
-    if (_lastCompletionTime != null && now.difference(_lastCompletionTime!).inMilliseconds < 400) {
-      return;
-    }
-    _lastCompletionTime = now;
     _playbackCompleteController.add(null);
   }
 
   void _initListeners() {
-    playerService.playerStateStream.listen((state) {
+    _playerStateSubscription?.cancel();
+    _positionSubscription?.cancel();
+    _durationSubscription?.cancel();
+    _bgmPlayerStateSubscription?.cancel();
+
+    _playerStateSubscription = playerService.playerStateStream.listen((state) {
+      final wasPlaying = _isPlaying;
       _isPlaying = state.playing;
-      if (state.playing) {
-        _hasStartedPlaying = true;
+
+      if (state.processingState == ProcessingState.ready ||
+          state.processingState == ProcessingState.buffering) {
+        // Track is prepared and ready/buffering -> ready to complete when it reaches end
+        _isReadyToComplete = true;
+      } else if (state.processingState == ProcessingState.completed) {
+        if (_isReadyToComplete) {
+          _isReadyToComplete = false;
+          _triggerPlaybackComplete();
+        }
+      } else if (state.processingState == ProcessingState.idle ||
+                 state.processingState == ProcessingState.loading) {
+        _isReadyToComplete = false;
       }
-      if (state.processingState == ProcessingState.completed && _hasStartedPlaying) {
-        _hasStartedPlaying = false;
-        _triggerPlaybackComplete();
+
+      if (wasPlaying != _isPlaying) {
+        notifyListeners();
       }
-      notifyListeners();
     });
 
-    playerService.positionStream.listen((pos) {
+    _positionSubscription = playerService.positionStream.listen((pos) {
       _currentPosition = pos;
       final newIndex = playerService.getHighlightIndexForPosition(pos);
       if (newIndex != _highlightedIndex) {
         _highlightedIndex = newIndex;
+        notifyListeners();
       }
-      // Bổ sung phát hiện hoàn tất câu khi position chạm duration
-      if (_hasStartedPlaying &&
-          _totalDuration > const Duration(milliseconds: 300) &&
-          pos >= _totalDuration &&
-          !_isPlaying) {
-        _hasStartedPlaying = false;
-        _triggerPlaybackComplete();
-      }
-      notifyListeners();
     });
 
-    playerService.durationStream.listen((dur) {
-      if (dur != null) {
+    _durationSubscription = playerService.durationStream.listen((dur) {
+      if (dur != null && dur != _totalDuration) {
         _totalDuration = dur;
         notifyListeners();
       }
     });
 
-    playerService.bgmPlayer.playerStateStream.listen((state) {
+    _bgmPlayerStateSubscription = playerService.bgmPlayer.playerStateStream.listen((state) {
       notifyListeners();
     });
   }
@@ -152,8 +158,7 @@ class PlayerStateProvider extends ChangeNotifier {
     List<WordBoundary>? boundaries,
   }) async {
     _isPausedByUser = false;
-    _hasStartedPlaying = false;
-    _lastCompletionTime = null;
+    _isReadyToComplete = false;
     _currentTitle = title;
     _currentStoryTitle = storyTitle;
     _currentChapterNumber = chapterNumber;
@@ -176,12 +181,12 @@ class PlayerStateProvider extends ChangeNotifier {
   void clearCurrentAudio() {
     _currentAudioPath = null;
     _currentSentenceIndex = null;
-    _hasStartedPlaying = false;
+    _isReadyToComplete = false;
     notifyListeners();
   }
 
   Future<void> stop({bool resetPause = false}) async {
-    _hasStartedPlaying = false;
+    _isReadyToComplete = false;
     if (resetPause) {
       _isPausedByUser = false;
     }
@@ -356,6 +361,10 @@ class PlayerStateProvider extends ChangeNotifier {
   @override
   void dispose() {
     _sleepTimer?.cancel();
+    _playerStateSubscription?.cancel();
+    _positionSubscription?.cancel();
+    _durationSubscription?.cancel();
+    _bgmPlayerStateSubscription?.cancel();
     _playbackCompleteController.close();
     super.dispose();
   }
