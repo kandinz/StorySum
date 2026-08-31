@@ -153,6 +153,7 @@ class PlayerStateProvider extends ChangeNotifier {
   }) async {
     _isPausedByUser = false;
     _hasStartedPlaying = false;
+    _lastCompletionTime = null;
     _currentTitle = title;
     _currentStoryTitle = storyTitle;
     _currentChapterNumber = chapterNumber;
