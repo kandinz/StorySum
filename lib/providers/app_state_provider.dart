@@ -2269,13 +2269,17 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   bool _isHandlingSentenceComplete = false;
+  bool _hasPendingSentenceComplete = false;
 
   /// Xử lý khi kết thúc phát một câu audio -> Tự động phát câu tiếp theo liên tục không nghỉ
   Future<void> handleSentenceComplete({
     required SettingsProvider settings,
     required PlayerStateProvider player,
   }) async {
-    if (_isHandlingSentenceComplete) return;
+    if (_isHandlingSentenceComplete) {
+      _hasPendingSentenceComplete = true;
+      return;
+    }
     _isHandlingSentenceComplete = true;
     try {
       if (_activeSentenceIndex == null) return;
@@ -2327,6 +2331,10 @@ class AppStateProvider extends ChangeNotifier {
       }
     } finally {
       _isHandlingSentenceComplete = false;
+      if (_hasPendingSentenceComplete) {
+        _hasPendingSentenceComplete = false;
+        await handleSentenceComplete(settings: settings, player: player);
+      }
     }
   }
 

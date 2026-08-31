@@ -1,15 +1,46 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite/src/factory_impl.dart';
-import 'package:app_story/models/chapter_model.dart';
 import 'package:app_story/models/saved_audio_item.dart';
+import 'package:app_story/models/tts_synthesis_result.dart';
 import 'package:app_story/providers/app_state_provider.dart';
 import 'package:app_story/providers/settings_provider.dart';
 import 'package:app_story/providers/player_state_provider.dart';
 import 'package:app_story/core/utils/audio_exporter.dart';
+
+class _BlockingPlayerStateProvider extends PlayerStateProvider {
+  final chapter2PlaybackStarted = Completer<void>();
+  final releaseChapter2Playback = Completer<void>();
+
+  @override
+  Future<void> playAudio({
+    required String filePath,
+    required String title,
+    required String storyTitle,
+    required int chapterNumber,
+    AudioSourceType audioSource = AudioSourceType.summary,
+    int? sentenceIndex,
+    List<WordBoundary>? boundaries,
+  }) async {
+    await super.playAudio(
+      filePath: filePath,
+      title: title,
+      storyTitle: storyTitle,
+      chapterNumber: chapterNumber,
+      audioSource: audioSource,
+      sentenceIndex: sentenceIndex,
+      boundaries: boundaries,
+    );
+    if (chapterNumber == 2 && sentenceIndex == 0 && !chapter2PlaybackStarted.isCompleted) {
+      chapter2PlaybackStarted.complete();
+      await releaseChapter2Playback.future;
+    }
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -446,6 +477,80 @@ void main() {
       expect(player.isPlaying, isTrue,
           reason: 'Khi nghe hết chương, tự chuyển chương phải tiếp tục phát audio ở chương mới');
       expect(appState.activeSentenceIndex, isNotNull);
+    });
+
+    test('autoNextChapter does not drop completion from the first sentence of the next chapter', () async {
+      final settings = SettingsProvider();
+      await settings.init();
+      final player = _BlockingPlayerStateProvider();
+      final appState = AppStateProvider();
+
+      const storyTitle = 'Fast Transition Story';
+      const chapter1Sentence = 'Câu cuối chương một.';
+      const chapter2Sentence1 = 'Câu đầu chương hai.';
+      const chapter2Sentence2 = 'Câu thứ hai chương hai.';
+
+      for (final audio in [
+        (chapter: 1, index: 0, text: 'Chương 1'),
+        (chapter: 1, index: 1, text: chapter1Sentence),
+        (chapter: 2, index: 0, text: 'Chương 2'),
+        (chapter: 2, index: 1, text: chapter2Sentence1),
+        (chapter: 2, index: 2, text: chapter2Sentence2),
+      ]) {
+        await createDummyAudio(
+          storyTitle: storyTitle,
+          chapterNumber: audio.chapter,
+          type: 'content',
+          sentenceIndex: audio.index,
+          sentenceText: audio.text,
+          voiceId: settings.selectedVoiceId,
+        );
+      }
+
+      final chapter1Item = SavedAudioItem(
+        id: 'fast_saved_chap_1',
+        title: 'Chương 1',
+        storyTitle: storyTitle,
+        chapterNumber: 1,
+        audioPath: '',
+        content: chapter1Sentence,
+      );
+      final chapter2Item = SavedAudioItem(
+        id: 'fast_saved_chap_2',
+        title: 'Chương 2',
+        storyTitle: storyTitle,
+        chapterNumber: 2,
+        audioPath: '',
+        content: '$chapter2Sentence1 $chapter2Sentence2',
+      );
+      appState.savedAudios.addAll([chapter1Item, chapter2Item]);
+
+      await appState.loadSavedChapter(
+        chapter1Item,
+        settings: settings,
+        player: player,
+      );
+      await settings.setAutoNextChapter(true);
+      await appState.playSentence(
+        sourceType: AudioSourceType.content,
+        sentenceIndex: 1,
+        settings: settings,
+        player: player,
+      );
+
+        final transition = appState.handleSentenceComplete(settings: settings, player: player);
+        await player.chapter2PlaybackStarted.future;
+
+      expect(appState.currentChapter?.chapterNumber, 2);
+      expect(appState.activeSentenceIndex, 0);
+
+      await appState.handleSentenceComplete(settings: settings, player: player);
+        player.releaseChapter2Playback.complete();
+      await transition;
+
+      expect(appState.activeSentenceIndex, 1,
+          reason: 'The first sentence completion in the new chapter must advance playback');
+      expect(player.isPlaying, isTrue);
     });
 
     test('manual chapter change does NOT start playback if user was paused', () async {
