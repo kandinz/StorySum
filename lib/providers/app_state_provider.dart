@@ -326,7 +326,7 @@ class AppStateProvider extends ChangeNotifier {
     int idx = 0;
     for (final raw in rawList) {
       final t = raw.trim();
-      if (t.isNotEmpty && RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(t)) {
+      if (t.isNotEmpty && RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9]').hasMatch(t)) {
         items.add(SentenceItem(index: idx++, text: t));
       }
     }
@@ -1579,9 +1579,10 @@ class AppStateProvider extends ChangeNotifier {
   }) async {
     final wasPlaying = player != null && player.isPlaying && !player.isPausedByUser;
 
-    // 1. Dừng audio của giọng cũ ngay lập tức (không reset pause flag để nếu đang phát thì phát tiếp)
-    if (player != null && player.isPlaying) {
+    // 1. Dừng hoàn toàn audio và xóa audio hiện tại của player (không reset pause flag để nếu đang phát thì phát tiếp)
+    if (player != null) {
       await player.stop(resetPause: false);
+      player.clearCurrentAudio();
     }
 
     // 2. Hủy các tiến trình tạo audio của phiên cũ ngay lập tức
@@ -1629,14 +1630,16 @@ class AppStateProvider extends ChangeNotifier {
     _preloadedNextChapter = null;
     notifyListeners();
 
-    // 5. Xóa các file audio giọng cũ CHẠY NGẦM KHÔNG CHẶN luồng tạo audio mới (Non-blocking background cleanup)
-    unawaited(Future(() async {
-      await AudioExporter.deleteSentenceAudioFiles(pathsToDelete);
-      await AudioExporter.deleteOldVoiceAudioFiles(
-        oldVoiceId: oldVoiceId,
-        currentVoiceId: settings.selectedVoiceId,
-      );
-    }));
+    // 5. Xóa triệt để các file audio giọng cũ trước khi nạp/tạo mới
+    await AudioExporter.deleteSentenceAudioFiles(pathsToDelete);
+    await AudioExporter.deleteOldVoiceAudioFiles(
+      oldVoiceId: oldVoiceId,
+      currentVoiceId: settings.selectedVoiceId,
+    );
+
+    if (_currentChapter != null) {
+      await _saveOrUpdateAudioItem(_currentChapter!, _currentSummary, settings);
+    }
 
     if (_currentChapter == null) {
       notifyListeners();
@@ -1745,7 +1748,7 @@ class AppStateProvider extends ChangeNotifier {
       }
 
       String cleanText = TextNormalizer.normalize(sentence.text).replaceAll('•', '').trim();
-      if (cleanText.isEmpty || !RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(cleanText)) {
+      if (cleanText.isEmpty || !RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9]').hasMatch(cleanText)) {
         return null;
       }
 
@@ -2214,7 +2217,7 @@ class AppStateProvider extends ChangeNotifier {
     } else if ((!item.hasAudio || item.hasError) && _activeSentenceIndex == sentenceIndex) {
       // Chỉ bỏ qua nếu câu thực sự không có chữ hoặc rỗng
       String clean = TextNormalizer.normalize(item.text).replaceAll('•', '').trim();
-      if (clean.isEmpty || !RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(clean)) {
+      if (clean.isEmpty || !RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9]').hasMatch(clean)) {
         if (sentenceIndex + 1 < list.length) {
           await playSentence(
             sourceType: sourceType,
@@ -2261,7 +2264,7 @@ class AppStateProvider extends ChangeNotifier {
 
       // Bỏ qua các câu không có chữ nếu có
       while (nextIndex < list.length &&
-          (!RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]').hasMatch(list[nextIndex].text) ||
+          (!RegExp(r'[a-zA-Z0-9\u00C0-\u1EF9]').hasMatch(list[nextIndex].text) ||
            list[nextIndex].text.trim().isEmpty)) {
         nextIndex++;
       }

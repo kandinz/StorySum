@@ -131,12 +131,9 @@ class AudioExporter {
           if (safeOldVoice != null && name.contains('_$safeOldVoice')) {
             shouldDelete = true;
           }
-          // 2. Nếu là file audio câu (có định dạng _C..._S...) mà không phải thuộc giọng hiện tại
-          else if (safeCurrentVoice != null) {
-            final isSentenceFile = name.contains(RegExp(r'_C\d+_(?:TomTat|NoiDung)_S\d+'));
-            if (isSentenceFile && !name.contains('_$safeCurrentVoice')) {
-              shouldDelete = true;
-            }
+          // 2. Nếu chỉ định currentVoiceId, bất kỳ file audio nào không thuộc về giọng hiện tại đều phải xóa
+          if (safeCurrentVoice != null && !name.contains('_$safeCurrentVoice')) {
+            shouldDelete = true;
           }
 
           if (shouldDelete) {

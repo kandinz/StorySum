@@ -85,5 +85,24 @@ void main() {
       expect(sentences[0].text, 'Giá trị số Pi xấp xỉ 3.14159.');
       expect(sentences[1].text, 'Khoảng cách là 1.5 km.');
     });
+
+    test('Bỏ qua các câu không có chữ cái tiếng Việt, tiếng Anh hoặc chữ số', () {
+      const text = 'Câu thứ nhất hợp lệ.\n...\n---\n(   )\n\n!!!\nCâu thứ hai hợp lệ với số 123.\n【】\n\nCâu thứ ba kết thúc.';
+      final sentences = appState.splitIntoSentences(text);
+
+      expect(sentences.length, 3);
+      expect(sentences[0].text, 'Câu thứ nhất hợp lệ.');
+      expect(sentences[1].text, 'Câu thứ hai hợp lệ với số 123.');
+      expect(sentences[2].text, 'Câu thứ ba kết thúc.');
+    });
+
+    test('Bỏ qua câu chỉ chứa ký tự đặc biệt hoặc tiếng Trung/Nhật không có chữ cái tiếng Việt/Anh/số', () {
+      const text = 'Tiêu Viêm mở mắt.\n（完）\n【作者有话说】\n***\n（下期再见）\n\nHắn bắt đầu bước đi.';
+      final sentences = appState.splitIntoSentences(text);
+
+      expect(sentences.length, 2);
+      expect(sentences[0].text, 'Tiêu Viêm mở mắt.');
+      expect(sentences[1].text, 'Hắn bắt đầu bước đi.');
+    });
   });
 }
