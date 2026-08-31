@@ -1057,7 +1057,11 @@ class AppStateProvider extends ChangeNotifier {
     int chapterNumber, {
     required SettingsProvider settings,
     required PlayerStateProvider player,
+    bool? autoPlay,
   }) async {
+    final wasPlaying = player.isPlaying;
+    final shouldAutoPlay = (autoPlay ?? wasPlaying) && !player.isPausedByUser;
+
     chapterController.text = chapterNumber.toString();
     final currentUrl = urlController.text.trim();
     if (currentUrl.isNotEmpty && !currentUrl.startsWith('file://')) {
@@ -1076,6 +1080,7 @@ class AppStateProvider extends ChangeNotifier {
         settings: settings,
         player: player,
         focusLastPlayed: true,
+        autoPlay: shouldAutoPlay,
       );
       return;
     }
@@ -1085,6 +1090,7 @@ class AppStateProvider extends ChangeNotifier {
       settings: settings,
       player: player,
       forceRefresh: true,
+      autoPlay: shouldAutoPlay,
     );
   }
 
@@ -1154,7 +1160,11 @@ class AppStateProvider extends ChangeNotifier {
   Future<void> goToPreviousChapter({
     required SettingsProvider settings,
     required PlayerStateProvider player,
+    bool? autoPlay,
   }) async {
+    final wasPlaying = player.isPlaying;
+    final shouldAutoPlay = (autoPlay ?? wasPlaying) && !player.isPausedByUser;
+
     await player.stop(resetPause: false);
     _generationSessionId++; // Hủy tiến trình tạo câu cũ
 
@@ -1170,7 +1180,7 @@ class AppStateProvider extends ChangeNotifier {
         settings: settings,
         player: player,
         focusLastPlayed: true,
-        autoPlay: false,
+        autoPlay: shouldAutoPlay,
       );
       return;
     }
@@ -1178,7 +1188,7 @@ class AppStateProvider extends ChangeNotifier {
     await reloadCurrentChapter(
       settings: settings,
       player: player,
-      autoPlay: false,
+      autoPlay: shouldAutoPlay,
     );
   }
 
@@ -1187,10 +1197,15 @@ class AppStateProvider extends ChangeNotifier {
     required SettingsProvider settings,
     required PlayerStateProvider player,
     bool isAutoNext = false,
+    bool? autoPlay,
   }) async {
     final wasPlaying = player.isPlaying;
-    // Chỉ tự phát tiếp khi chuyển tự động khi nghe hết chương (isAutoNext) VÀ người dùng không bấm pause
-    final shouldAutoPlay = isAutoNext && !player.isPausedByUser && wasPlaying;
+    // Tự phát tiếp khi:
+    // 1) Được chỉ định cụ thể qua autoPlay
+    // 2) Hoặc tự chuyển khi nghe hết chương (isAutoNext)
+    // 3) Hoặc người dùng đang nghe audio (wasPlaying)
+    // VÀ người dùng không bấm pause chủ động
+    final shouldAutoPlay = (autoPlay ?? (isAutoNext || wasPlaying)) && !player.isPausedByUser;
     await player.stop(resetPause: false);
     _generationSessionId++; // Hủy tiến trình tạo câu cũ
 
@@ -1234,18 +1249,23 @@ class AppStateProvider extends ChangeNotifier {
       _isProcessing = false;
       notifyListeners();
 
-      // Nếu chuyển chương tự động khi nghe hết chương trước -> tiếp tục phát tiếp
+      // Nếu đang phát hoặc tự chuyển chương -> tiếp tục phát tiếp
       if (shouldAutoPlay) {
+        if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isEmpty && _currentChapter != null) {
+          await summarizeCurrentChapter(settings);
+          if (_summarySentences.isEmpty && _contentSentences.isNotEmpty) {
+            _activeAudioSource = AudioSourceType.content;
+            _activeSentenceIndex = _currentContentSentenceIndex;
+          }
+        }
         _startSequentialGeneration(
           chapter: preloaded.chapter,
           settings: settings,
           player: player,
           startIndex: _activeSentenceIndex ?? 0,
+          force: true,
         );
 
-        if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isEmpty && _currentChapter != null) {
-          await summarizeCurrentChapter(settings);
-        }
         final targetList = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
         if (targetList.isNotEmpty) {
           final startIdx = _activeSentenceIndex ?? 0;
@@ -1285,7 +1305,7 @@ class AppStateProvider extends ChangeNotifier {
       await _inFlightPreloadFuture;
 
       if (_preloadedNextChapter != null && _preloadedNextChapter!.chapter.chapterNumber == nextChapterNum) {
-        await goToNextChapter(settings: settings, player: player, isAutoNext: isAutoNext);
+        await goToNextChapter(settings: settings, player: player, isAutoNext: isAutoNext, autoPlay: shouldAutoPlay);
         return;
       }
     }
@@ -1300,7 +1320,8 @@ class AppStateProvider extends ChangeNotifier {
     bool forceRefresh = false,
     bool? autoPlay,
   }) async {
-    final shouldAutoPlay = (autoPlay ?? false) && !player.isPausedByUser;
+    final wasPlaying = player.isPlaying;
+    final shouldAutoPlay = ((autoPlay ?? false) || wasPlaying) && !player.isPausedByUser;
     if (_isProcessing && !forceRefresh) {
       _currentStatusMessage = 'Ứng dụng đang xử lý, vui lòng đợi trong giây lát!';
       notifyListeners();
@@ -1433,20 +1454,25 @@ class AppStateProvider extends ChangeNotifier {
 
       // Tự động phát nếu đang bật autoplay và không pause
       if (shouldAutoPlay) {
+        if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isEmpty) {
+          await summarizeCurrentChapter(settings);
+          if (_summarySentences.isEmpty && _contentSentences.isNotEmpty) {
+            _activeAudioSource = AudioSourceType.content;
+            _activeSentenceIndex = _currentContentSentenceIndex;
+          }
+        }
         _startSequentialGeneration(
           chapter: chapter,
           settings: settings,
           player: player,
           startIndex: _activeSentenceIndex ?? 0,
+          force: true,
         );
 
-        if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isEmpty) {
-          await summarizeCurrentChapter(settings);
-        }
         final targetList = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
         if (targetList.isNotEmpty) {
           final startIdx = _activeSentenceIndex ?? 0;
-          playSentence(
+          await playSentence(
             sourceType: _activeAudioSource,
             sentenceIndex: startIdx,
             settings: settings,
@@ -2295,8 +2321,8 @@ class AppStateProvider extends ChangeNotifier {
         }
 
         // Nếu bật tự chuyển chương -> chuyển chương tiếp theo và tiếp tục phát
-        if (settings.autoNextChapter && !_isProcessing) {
-          await goToNextChapter(settings: settings, player: player, isAutoNext: true);
+        if (settings.autoNextChapter) {
+          await goToNextChapter(settings: settings, player: player, isAutoNext: true, autoPlay: true);
         }
       }
     } finally {
@@ -3031,7 +3057,8 @@ class AppStateProvider extends ChangeNotifier {
     bool focusLastPlayed = true,
     bool autoPlay = false,
   }) async {
-    final shouldAutoPlay = autoPlay && !player.isPausedByUser;
+    final wasPlaying = player.isPlaying;
+    final shouldAutoPlay = (autoPlay || wasPlaying) && !player.isPausedByUser;
     final sessionId = ++_generationSessionId;
     await player.stop(resetPause: false);
 
@@ -3207,28 +3234,34 @@ class AppStateProvider extends ChangeNotifier {
       _isProcessing = false;
       notifyListeners();
 
-      // Tự động tải ngầm trước chương kế tiếp
-      _preloadNextChapter(settings: settings, player: player);
-
       // Tự động phát nếu autoplay được bật và không pause
       if (shouldAutoPlay) {
+        if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isEmpty && _contentSentences.isNotEmpty) {
+          _activeAudioSource = AudioSourceType.content;
+          _activeSentenceIndex = _currentContentSentenceIndex;
+        }
+
         _startSequentialGeneration(
           chapter: chapter,
           settings: settings,
           player: player,
-          startIndex: targetSentenceIndex,
+          startIndex: _activeSentenceIndex ?? targetSentenceIndex,
+          force: true,
         );
 
         final currentPlayList = _activeAudioSource == AudioSourceType.summary ? _summarySentences : _contentSentences;
         if (currentPlayList.isNotEmpty) {
-          playSentence(
+          await playSentence(
             sourceType: _activeAudioSource,
-            sentenceIndex: targetSentenceIndex,
+            sentenceIndex: _activeSentenceIndex ?? targetSentenceIndex,
             settings: settings,
             player: player,
           );
         }
       }
+
+      // Tự động tải ngầm trước chương kế tiếp
+      _preloadNextChapter(settings: settings, player: player);
 
     } catch (e) {
       _isProcessing = false;

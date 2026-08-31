@@ -157,6 +157,7 @@ class PlayerStateProvider extends ChangeNotifier {
     int? sentenceIndex,
     List<WordBoundary>? boundaries,
   }) async {
+    _isPlaying = true;
     _isPausedByUser = false;
     _isReadyToComplete = false;
     _currentTitle = title;
