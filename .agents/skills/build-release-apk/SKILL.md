@@ -1,92 +1,70 @@
 ---
 name: build-release-apk
-description: Build Flutter Android ARM64 release APK kèm version (StorySum-v<version>.apk), upload nó lên GitHub Releases, push git changes, và chạy full index sync với Codebase Memory MCP.
+description: Tự động tăng version trong pubspec.yaml, commit và push Git Tag lên GitHub để GitHub Actions CI/CD tự build release APK ARM64 (StorySum-v<version>.apk) và tạo GitHub Release, sau đó chạy full index sync với Codebase Memory MCP.
 ---
 
-# Flutter Build & Release (ARM64) + Codebase Memory Sync
+# Flutter Release via GitHub Actions CI/CD + Codebase Memory Sync
 
-Skill này tự động hóa toàn diện quy trình build, phát hành và đồng bộ đồ thị tri thức mã nguồn cho ứng dụng Flutter Android với **4 bước chuẩn**:
-1. **Chỉ build file APK ARM64 và đổi tên theo tên app + version** (ví dụ: `StorySum-v1.0.54.apk`).
-2. **Tải file APK `StorySum-v<version>.apk` lên GitHub Release** tương ứng với phiên bản.
-3. **Commit và push các thay đổi mã nguồn cùng Git Tag lên Git repository**.
-4. **Chạy Full Index Sync đồ thị tri thức mã nguồn qua `codebase-memory-mcp`**.
+Skill này tự động hóa toàn diện quy trình phát hành phiên bản mới qua **GitHub Actions CI/CD**: máy local không cần tốn CPU/thời gian build Gradle, GitHub runner sẽ tự động build và upload file APK ARM64 lên GitHub Release.
 
----
+### 🚀 Quy trình thực hiện khi gọi `/build-release-apk`:
 
-## 🚀 Cách thực hiện qua Agent / Lệnh
+1. **Tăng Version & Git Commit**:
+   - Tự động tăng patch version trong `pubspec.yaml` (ví dụ: `1.0.77+78` -> `1.0.78+79`).
+   - Tạo Git commit chứa các thay đổi mã nguồn mới nhất:
+     ```powershell
+     git add -A
+     git commit -m "chore(release): bump version to v<version>"
+     ```
 
-Khi người dùng gọi `/build-release-apk`, Agent sẽ thực hiện tuần tự 4 bước:
+2. **Tạo Git Tag & Push lên GitHub**:
+   - Tạo Git Tag tương ứng (ví dụ: `v1.0.78`):
+     ```powershell
+     git tag -a v1.0.78 -m "Release v1.0.78"
+     ```
+   - Push commit và tag lên GitHub `origin`:
+     ```powershell
+     git push origin main
+     git push origin v1.0.78
+     ```
+   - **GitHub Actions CI/CD tự động kích hoạt ngay lập tức**:
+     - Máy chủ GitHub (Ubuntu runner) tự động cài đặt Java 17 + Flutter stable.
+     - Biên dịch release APK kiến trúc ARM64:
+       `flutter build apk --release --target-platform android-arm64 --split-per-abi`
+     - Đổi tên thành `StorySum-v<version>.apk`.
+     - Tạo GitHub Release và upload APK kèm link download trực tiếp.
+     - Theo dõi tiến trình tại: `https://github.com/kandinz/StorySum/actions`
 
-### 🔹 Bước 1: Build APK ARM64 & Đổi tên theo Tên App và Version
-1. Lấy version hiện tại từ `pubspec.yaml` (ví dụ: `1.0.54` -> tag `v1.0.54`).
-2. Chạy lệnh Flutter chỉ biên dịch kiến trúc ARM64:
-```powershell
-flutter build apk --release --target-platform android-arm64 --split-per-abi
-```
-3. Đổi tên file APK đầu ra sang định dạng `StorySum-v<version>.apk`:
-   - Từ: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`
-   - Thành: `build/app/outputs/flutter-apk/StorySum-v1.0.54.apk` (tương ứng với tag version trong `pubspec.yaml`).
-
----
-
-### 🔹 Bước 2: Push APK lên GitHub Release
-Tạo hoặc cập nhật GitHub Release cho tag version (ví dụ: `v1.0.54`), sau đó upload asset `StorySum-v1.0.54.apk`.
-*(Có thể chạy qua script tự động `python .agents/skills/build-release-apk/scripts/release.py` hoặc REST API GitHub)*.
-
----
-
-### 🔹 Bước 3: Push code và Tag lên Git
-1. Kiểm tra `git status`.
-2. Commit toàn bộ thay đổi:
-   ```powershell
-   git add -A
-   git commit -m "build(release): update release APK and latest changes"
+3. **Chạy Full Index Sync Codebase MCP**:
+   Gọi công cụ MCP `codebase-memory-mcp` để index toàn bộ mã nguồn với chế độ `full`:
+   ```json
+   Tool: call_mcp_tool
+   ServerName: codebase-memory-mcp
+   ToolName: index_repository
+   Arguments: {
+     "repo_path": "D:/Project/SummaryStory",
+     "mode": "full"
+   }
    ```
-3. Đẩy commit và tag lên remote:
-   ```powershell
-   git push origin main
-   git push origin --tags
-   ```
 
 ---
 
-### 🔹 Bước 4: Chạy Full Index Sync Codebase MCP
-Gọi công cụ MCP `codebase-memory-mcp` để index toàn bộ mã nguồn với chế độ `full`:
-```json
-Tool: call_mcp_tool
-ServerName: codebase-memory-mcp
-ToolName: index_repository
-Arguments: {
-  "repo_path": "D:/Project/SummaryStory",
-  "mode": "full"
-}
-```
-
----
-
-## 🛠️ Chạy nhanh tự động các bước build & git:
+## 🛠️ Chạy nhanh tự động qua Script:
 
 ```powershell
 python .agents/skills/build-release-apk/scripts/release.py
 ```
 
-### Các tùy chọn script nâng cao:
-- **Chỉ định tag và ghi chú release:**
+### Các tùy chọn script:
+- **Chỉ định tag cụ thể:**
   ```powershell
-  python .agents/skills/build-release-apk/scripts/release.py --tag v1.0.54 --title "Release v1.0.54" --notes "Ghi chú cập nhật..."
+  python .agents/skills/build-release-apk/scripts/release.py --tag v1.0.78
   ```
-- **Tùy chỉnh commit message:**
+- **Không tự động tăng version trong pubspec.yaml:**
   ```powershell
-  python .agents/skills/build-release-apk/scripts/release.py --commit-msg "feat: cập nhật tính năng mới"
+  python .agents/skills/build-release-apk/scripts/release.py --no-bump
   ```
-- **Bỏ qua bước build nếu APK đã có sẵn (sẽ tự động đổi tên APK hiện có sang tên StorySum-v<version>.apk):**
+- **Tùy chọn build local (nếu muốn build trực tiếp trên máy thay vì CI/CD):**
   ```powershell
-  python .agents/skills/build-release-apk/scripts/release.py --skip-build
+  python .agents/skills/build-release-apk/scripts/release.py --build-local
   ```
-
----
-
-## ⚠️ Lưu ý quan trọng
-- **Cập nhật version**: Trước khi tạo release mới, hãy tăng phiên bản trong `pubspec.yaml` (ví dụ `version: 1.0.54+55`).
-- **File APK kèm Tên App & Version**: File APK sau khi build sẽ tự động được đổi tên thành `StorySum-v<version>.apk` (ví dụ: `StorySum-v1.0.54.apk`) trước khi upload lên GitHub Release.
-- **Codebase Memory Index**: Luôn gọi `index_repository` ở Bước 4 để đảm bảo đồ thị tri thức kiến trúc dự án luôn phản ánh chính xác nhất trạng thái commit mới nhất.

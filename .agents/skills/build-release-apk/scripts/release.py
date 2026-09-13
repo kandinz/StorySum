@@ -1,5 +1,6 @@
 """
-Helper script to automate Flutter ARM64 Release Build, GitHub Release Upload, and Git Push.
+Helper script to automate Git Tagging & Pushing for GitHub Actions CI/CD Release (StorySum).
+Can also optionally build locally if --build-local is specified.
 """
 
 import argparse
@@ -41,7 +42,6 @@ def get_git_info(cwd):
     res = run_cmd("git remote get-url origin", cwd=cwd)
     url = res.stdout.strip()
     
-    # Pattern: https://<token>@github.com/<owner>/<repo>.git or git@github.com:<owner>/<repo>.git or https://github.com/<owner>/<repo>.git
     token = None
     owner = None
     repo = None
@@ -57,7 +57,6 @@ def get_git_info(cwd):
             owner = norm_match.group(1)
             repo = norm_match.group(2)
             
-    # Check env var for token if not in URL
     if not token or token == "git":
         token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
         
@@ -70,26 +69,65 @@ def get_git_info(cwd):
 def get_pubspec_version(cwd):
     pubspec_path = os.path.join(cwd, "pubspec.yaml")
     if not os.path.exists(pubspec_path):
-        return "1.0.0"
+        return "1.0.0", "1.0.0+1"
     with open(pubspec_path, "r", encoding="utf-8") as f:
         content = f.read()
     match = re.search(r"^version:\s*([^\s\r\n]+)", content, re.MULTILINE)
     if match:
         full_ver = match.group(1)
-        # 1.0.2+3 -> ver_name=1.0.2
         ver_name = full_ver.split("+")[0]
         return ver_name, full_ver
     return "1.0.0", "1.0.0+1"
 
 
+def bump_pubspec_version(cwd, new_version=None):
+    pubspec_path = os.path.join(cwd, "pubspec.yaml")
+    if not os.path.exists(pubspec_path):
+        return "1.0.0", "v1.0.0"
+        
+    with open(pubspec_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    
+    match = re.search(r"^version:\s*([^\s\r\n]+)", content, re.MULTILINE)
+    if not match:
+        return "1.0.0", "v1.0.0"
+        
+    full_ver = match.group(1)
+    if "+" in full_ver:
+        ver_name, build_num_str = full_ver.split("+", 1)
+        try:
+            build_num = int(build_num_str) + 1
+        except ValueError:
+            build_num = 1
+    else:
+        ver_name = full_ver
+        build_num = 1
+        
+    if new_version:
+        clean_ver = new_version.lstrip("v")
+        ver_name = clean_ver
+        updated_full = f"{clean_ver}+{build_num}"
+    else:
+        parts = ver_name.split(".")
+        if len(parts) == 3 and parts[2].isdigit():
+            parts[2] = str(int(parts[2]) + 1)
+            ver_name = ".".join(parts)
+        updated_full = f"{ver_name}+{build_num}"
+        
+    new_content = re.sub(r"^version:\s*[^\s\r\n]+", f"version: {updated_full}", content, count=1, flags=re.MULTILINE)
+    with open(pubspec_path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+        
+    print(f"[INFO] Bumped pubspec.yaml version: {full_ver} -> {updated_full}")
+    return ver_name, f"v{ver_name}"
+
+
 def step1_build_apk(cwd, tag):
     print("\n==========================================")
-    print("STEP 1: Building Release APK (ARM64 only)")
+    print("STEP 1: Building Release APK (ARM64 only - Local)")
     print("==========================================")
     
     built_apks = []
-    
-    # Build Split ARM64 APK (Tối ưu riêng cho máy Android ARM64 64-bit)
     print("\n[INFO] Building ARM64-v8a Split APK...")
     build_arm64_cmd = "flutter build apk --release --target-platform android-arm64 --split-per-abi"
     run_cmd(build_arm64_cmd, cwd=cwd)
@@ -161,7 +199,6 @@ def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, r
         "User-Agent": "SummaryStory-ReleaseScript"
     }
     
-    # 1. Check if release exists
     rel_url = f"https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}"
     res = safe_request("GET", rel_url, headers=headers)
     
@@ -170,7 +207,6 @@ def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, r
         release_id = release_data["id"]
         print(f"[INFO] Found existing release for tag {tag} (ID: {release_id})")
     elif res.status_code == 404:
-        # Create release
         print(f"[INFO] Release {tag} not found. Creating new release...")
         create_url = f"https://api.github.com/repos/{owner}/{repo}/releases"
         payload = {
@@ -190,7 +226,6 @@ def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, r
     else:
         raise RuntimeError(f"Error querying release: {res.status_code} - {res.text}")
         
-    # 2. Upload each asset
     existing_assets = {a["name"]: a["id"] for a in release_data.get("assets", [])}
     
     for apk_path in apk_paths:
@@ -246,9 +281,9 @@ def step2_push_github_release(cwd, apk_paths, tag, title, notes, token, owner, r
             raise RuntimeError(f"Failed to upload asset {asset_name}: {upload_res.status_code} - {upload_res.text}")
 
 
-def step3_push_git(cwd, branch, commit_msg, tag=None):
+def step_push_git_tag(cwd, branch, commit_msg, tag):
     print("\n==========================================")
-    print(f"STEP 3: Pushing code changes to Git ({branch})")
+    print(f"Pushing Git changes & Tag {tag} to ({branch})")
     print("==========================================")
     
     status_res = run_cmd("git status --porcelain", cwd=cwd, check=False)
@@ -257,7 +292,7 @@ def step3_push_git(cwd, branch, commit_msg, tag=None):
     if has_changes:
         print("[INFO] Staging modified files...")
         run_cmd("git add -A", cwd=cwd)
-        msg = commit_msg or "build(release): update release build and code changes"
+        msg = commit_msg or f"chore(release): {tag}"
         print(f"[INFO] Committing with message: {msg}")
         run_cmd(f'git commit -m "{msg}"', cwd=cwd)
     else:
@@ -267,7 +302,6 @@ def step3_push_git(cwd, branch, commit_msg, tag=None):
     run_cmd(f"git push origin {branch}", cwd=cwd)
     
     if tag:
-        # Check if local tag exists
         tag_check = run_cmd(f"git tag -l {tag}", cwd=cwd, check=False)
         if not tag_check.stdout.strip():
             print(f"[INFO] Creating local git tag {tag}...")
@@ -275,89 +309,72 @@ def step3_push_git(cwd, branch, commit_msg, tag=None):
         print(f"[INFO] Pushing tag {tag} to origin...")
         run_cmd(f"git push origin {tag}", cwd=cwd, check=False)
         
-    print("[SUCCESS] Git push completed successfully.")
+    print("[SUCCESS] Git commit & tag pushed successfully.")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build Flutter Release APKs, publish GitHub Release, and push Git changes.")
+    parser = argparse.ArgumentParser(description="Automate Git tagging to trigger GitHub Actions CI/CD Release.")
     parser.add_argument("--cwd", default=os.getcwd(), help="Workspace directory")
-    parser.add_argument("--tag", default=None, help="Release tag name (e.g. v1.0.3)")
-    parser.add_argument("--title", default=None, help="Release title")
-    parser.add_argument("--notes", default=None, help="Release notes")
+    parser.add_argument("--tag", default=None, help="Release tag name (e.g. v1.0.78)")
     parser.add_argument("--commit-msg", default=None, help="Git commit message")
-    parser.add_argument("--token", default=None, help="GitHub token")
-    parser.add_argument("--skip-build", action="store_true", help="Skip APK build step")
-    parser.add_argument("--skip-release", action="store_true", help="Skip GitHub release upload")
-    parser.add_argument("--skip-git", action="store_true", help="Skip Git commit & push")
+    parser.add_argument("--no-bump", action="store_true", help="Do not bump pubspec.yaml version")
+    parser.add_argument("--build-local", action="store_true", help="Perform build locally instead of delegating to GitHub Actions")
+    parser.add_argument("--title", default=None, help="Release title (for local build)")
+    parser.add_argument("--notes", default=None, help="Release notes (for local build)")
+    parser.add_argument("--token", default=None, help="GitHub token (for local build)")
     
     args = parser.parse_args()
     cwd = os.path.abspath(args.cwd)
     
-    ver_name, full_ver = get_pubspec_version(cwd)
-    tag = args.tag or f"v{ver_name}"
-    
+    # 1. Quản lý version
+    if not args.no_bump:
+        ver_name, tag = bump_pubspec_version(cwd, args.tag)
+    else:
+        ver_name, _ = get_pubspec_version(cwd)
+        tag = args.tag or f"v{ver_name}"
+        
     git_info = get_git_info(cwd)
-    token = args.token or git_info["token"]
     owner = git_info["owner"]
     repo = git_info["repo"]
     branch = git_info["branch"]
     
     print(f"Target Repo: {owner}/{repo}")
     print(f"Target Branch: {branch}")
-    print(f"Target Tag: {tag}")
+    print(f"Release Tag: {tag} (Version: {ver_name})")
     
-    apk_paths = []
-    if not args.skip_build:
-        apk_paths = step1_build_apk(cwd, tag)
-    else:
-        apk_dir = os.path.join(cwd, "build", "app", "outputs", "flutter-apk")
-        version_tag = tag if tag.startswith("v") else f"v{tag}"
-        target_name = f"StorySum-{version_tag}.apk"
-        target_apk = os.path.join(apk_dir, target_name)
-        raw_arm64_apk = os.path.join(apk_dir, "app-arm64-v8a-release.apk")
+    # 2. Nếu không yêu cầu build local -> Phương thức 1: Git push & Tag để GitHub Actions tự build CI/CD
+    if not args.build_local:
+        commit_msg = args.commit_msg or f"chore(release): bump version to {tag}"
+        step_push_git_tag(cwd=cwd, branch=branch, commit_msg=commit_msg, tag=tag)
         
-        if os.path.exists(target_apk):
-            apk_paths.append(target_apk)
-        else:
-            candidates = [
-                raw_arm64_apk,
-                os.path.join(apk_dir, f"app-arm64-v8a-release-{version_tag}.apk")
-            ]
-            found = False
-            for cand in candidates:
-                if os.path.exists(cand):
-                    print(f"[INFO] Renaming existing {cand} to {target_apk}...")
-                    os.rename(cand, target_apk)
-                    if os.path.exists(cand + ".sha1"):
-                        os.rename(cand + ".sha1", target_apk + ".sha1")
-                    apk_paths.append(target_apk)
-                    found = True
-                    break
-            if not found:
-                for f in os.listdir(apk_dir) if os.path.exists(apk_dir) else []:
-                    if f.endswith(".apk") and (version_tag in f or "StorySum" in f or "arm64" in f or "release" in f):
-                        apk_paths.append(os.path.join(apk_dir, f))
-        print(f"[INFO] Skipping build. Found existing APKs: {apk_paths}")
-        
-    if not args.skip_release:
-        apk_name = os.path.basename(apk_paths[0]) if apk_paths else f"StorySum-{tag}.apk"
-        step2_push_github_release(
-            cwd=cwd,
-            apk_paths=apk_paths,
-            tag=tag,
-            title=args.title or f"Release {tag}",
-            notes=args.notes or f"Release {tag} - StorySum Android ARM64 Release ({apk_name})",
-            token=token,
-            owner=owner,
-            repo=repo
-        )
-        
-    if not args.skip_git:
-        commit_msg = args.commit_msg or f"release: {tag} - update release APKs and code changes"
-        step3_push_git(cwd=cwd, branch=branch, commit_msg=commit_msg, tag=tag)
-        
+        print("\n=======================================================")
+        print(f"🚀 GITHUB ACTIONS CI/CD ĐÃ ĐƯỢC KÍCH HOẠT TỰ ĐỘNG!")
+        print("=======================================================")
+        print(f"Tag {tag} đã được push lên GitHub.")
+        print(f"GitHub Actions runner sẽ tự động biên dịch APK ARM64 release và tạo GitHub Release:")
+        print(f"👉 Theo dõi tiến trình tại: https://github.com/{owner}/{repo}/actions")
+        print(f"👉 Link Release sau khi build xong: https://github.com/{owner}/{repo}/releases/tag/{tag}")
+        print("=======================================================")
+        return
+
+    # 3. Chế độ Build Local (nếu truyền flag --build-local)
+    token = args.token or git_info["token"]
+    apk_paths = step1_build_apk(cwd, tag)
+    step2_push_github_release(
+        cwd=cwd,
+        apk_paths=apk_paths,
+        tag=tag,
+        title=args.title or f"Release {tag}",
+        notes=args.notes or f"Release {tag} - StorySum Android ARM64 Release",
+        token=token,
+        owner=owner,
+        repo=repo
+    )
+    commit_msg = args.commit_msg or f"release: {tag} - update release APKs and code changes"
+    step_push_git_tag(cwd=cwd, branch=branch, commit_msg=commit_msg, tag=tag)
+    
     print("\n==========================================")
-    print("🎉 ALL STEPS COMPLETED SUCCESSFULLY!")
+    print("🎉 ALL STEPS COMPLETED SUCCESSFULLY (LOCAL BUILD)!")
     print("==========================================")
 
 
