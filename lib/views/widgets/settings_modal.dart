@@ -861,6 +861,16 @@ class _SettingsModalState extends State<SettingsModal> {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              _buildActionButton(
+                label: settings.isSyncingModels ? 'Đang tải...' : 'Đồng bộ',
+                icon: Icons.sync_rounded,
+                onTap: settings.isSyncingModels
+                    ? () {}
+                    : () => _handleSyncModels(context, settings, colors),
+                colors: colors,
+                customColor: Colors.teal,
+              ),
+              const SizedBox(width: 6),
               if (AiProviderModel.defaultBuiltinProviders.any((b) => b.id == settings.activeProviderId)) ...[
                 _buildActionButton(
                   label: 'Khôi phục',
@@ -2142,38 +2152,32 @@ class _SettingsModalState extends State<SettingsModal> {
           children: [
             Icon(Icons.vpn_key_rounded, size: 18, color: colors.primary),
             const SizedBox(width: 8),
-            Text('Thêm API Key (${settings.aiProvider})', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colors.textPrimary)),
+            Expanded(
+              child: Text(
+                'Thêm API Key (${settings.aiProvider})',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colors.textPrimary),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Nhập hoặc dán API key cho ${settings.aiProvider}:',
-              style: TextStyle(fontSize: 12, color: colors.textMuted, height: 1.4),
-            ),
-            const SizedBox(height: 10),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: controller,
-                    autofocus: true,
-                    style: TextStyle(fontSize: 12.5, color: colors.textPrimary),
-                    decoration: InputDecoration(
-                      hintText: 'Nhập API key...',
-                      hintStyle: TextStyle(color: colors.textMuted, fontSize: 12),
-                      fillColor: colors.elevatedBackground,
-                      filled: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: colors.border)),
-                    ),
+                  child: Text(
+                    'Nhập một hoặc nhiều API key (mỗi dòng một key):',
+                    style: TextStyle(fontSize: 12, color: colors.textMuted, height: 1.4),
                   ),
                 ),
-                const SizedBox(width: 6),
                 IconButton(
-                  icon: Icon(Icons.content_paste_rounded, size: 20, color: colors.primary),
+                  icon: Icon(Icons.content_paste_rounded, size: 18, color: colors.primary),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                   onPressed: () async {
                     final data = await Clipboard.getData('text/plain');
                     if (data?.text != null && data!.text!.trim().isNotEmpty) {
@@ -2184,6 +2188,23 @@ class _SettingsModalState extends State<SettingsModal> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.multiline,
+              minLines: 3,
+              maxLines: 6,
+              style: TextStyle(fontSize: 12.5, color: colors.textPrimary),
+              decoration: InputDecoration(
+                hintText: "Dán danh sách key tại đây...\nkey_1\nkey_2\nkey_3",
+                hintStyle: TextStyle(color: colors.textMuted.withValues(alpha: 0.6), fontSize: 12),
+                fillColor: colors.elevatedBackground,
+                filled: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: colors.border)),
+              ),
+            ),
           ],
         ),
         actions: [
@@ -2193,9 +2214,21 @@ class _SettingsModalState extends State<SettingsModal> {
           ),
           ElevatedButton(
             onPressed: () {
-              final key = controller.text.trim();
-              if (key.isNotEmpty) {
-                settings.addApiKeyToActiveProvider(key);
+              final text = controller.text.trim();
+              if (text.isNotEmpty) {
+                settings.addApiKeysToActiveProvider([text]).then((count) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          count > 0 ? 'Đã thêm $count API Key mới.' : 'Các API Key này đã tồn tại sẵn trong danh sách.',
+                        ),
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                });
                 Navigator.pop(ctx);
               }
             },
@@ -2209,6 +2242,51 @@ class _SettingsModalState extends State<SettingsModal> {
         ],
       ),
     );
+  }
+
+  Future<void> _handleSyncModels(BuildContext context, SettingsProvider settings, AppThemeColors colors) async {
+    try {
+      final count = await settings.syncModelsForActiveProvider();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Đồng bộ thành công! Đã tải $count model của ${settings.aiProvider}.',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green.shade700,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        final msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline_rounded, color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Lỗi đồng bộ model: $msg')),
+              ],
+            ),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   void _showAddModelDialog(BuildContext context, SettingsProvider settings, AppThemeColors colors) {

@@ -66,7 +66,7 @@ class AppStateProvider extends ChangeNotifier {
   int? _activeSentenceIndex;
   int _currentSummarySentenceIndex = 0;
   int _currentContentSentenceIndex = 0;
-  AudioSourceType _activeAudioSource = AudioSourceType.summary;
+  AudioSourceType _activeAudioSource = AudioSourceType.content;
   int _generationSessionId = 0;
   final Map<String, Future<String?>> _inFlightSynthesis = {};
 
@@ -1251,9 +1251,8 @@ class AppStateProvider extends ChangeNotifier {
 
       // Nếu đang phát hoặc tự chuyển chương -> tiếp tục phát tiếp
       if (shouldAutoPlay) {
-        if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isEmpty && _currentChapter != null) {
-          await summarizeCurrentChapter(settings);
-          if (_summarySentences.isEmpty && _contentSentences.isNotEmpty) {
+        if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isEmpty) {
+          if (_contentSentences.isNotEmpty) {
             _activeAudioSource = AudioSourceType.content;
             _activeSentenceIndex = _currentContentSentenceIndex;
           }
@@ -1455,8 +1454,7 @@ class AppStateProvider extends ChangeNotifier {
       // Tự động phát nếu đang bật autoplay và không pause
       if (shouldAutoPlay) {
         if (_activeAudioSource == AudioSourceType.summary && _summarySentences.isEmpty) {
-          await summarizeCurrentChapter(settings);
-          if (_summarySentences.isEmpty && _contentSentences.isNotEmpty) {
+          if (_contentSentences.isNotEmpty) {
             _activeAudioSource = AudioSourceType.content;
             _activeSentenceIndex = _currentContentSentenceIndex;
           }
@@ -3220,13 +3218,11 @@ class AppStateProvider extends ChangeNotifier {
       _currentSummarySentenceIndex = getEffectiveSentenceIndex(savedSummaryIdx, _summarySentences.length);
       _currentContentSentenceIndex = getEffectiveSentenceIndex(savedContentIdx, _contentSentences.length);
 
-      AudioSourceType targetSource = AudioSourceType.summary;
-      if (savedSourceStr == 'content' && _contentSentences.isNotEmpty) {
-        targetSource = AudioSourceType.content;
+      AudioSourceType targetSource = AudioSourceType.content;
+      if (savedSourceStr == 'summary' && _summarySentences.isNotEmpty) {
+        targetSource = AudioSourceType.summary;
       } else {
-        targetSource = _summarySentences.isNotEmpty
-            ? AudioSourceType.summary
-            : AudioSourceType.content;
+        targetSource = AudioSourceType.content;
       }
 
       final targetSentenceIndex = targetSource == AudioSourceType.summary
@@ -3305,7 +3301,7 @@ class AppStateProvider extends ChangeNotifier {
     _activeSentenceIndex = null;
     _currentSummarySentenceIndex = 0;
     _currentContentSentenceIndex = 0;
-    _activeAudioSource = AudioSourceType.summary;
+    _activeAudioSource = AudioSourceType.content;
     _isProcessing = false;
     _currentStatusMessage = '';
     _overallProgress = 0.0;

@@ -8,6 +8,7 @@ import '../core/utils/audio_exporter.dart';
 import '../models/voice_model.dart';
 import '../models/ai_provider_model.dart';
 import '../models/bgm_track_model.dart';
+import '../services/summary_service.dart';
 
 class SettingsProvider extends ChangeNotifier {
   late SharedPreferences _prefs;
@@ -440,25 +441,86 @@ class SettingsProvider extends ChangeNotifier {
     }
   }
 
+  bool _isSyncingModels = false;
+  bool get isSyncingModels => _isSyncingModels;
+
+  /// Đồng bộ danh sách Model từ Server của Provider đang chọn về máy
+  Future<int> syncModelsForActiveProvider({SummaryService? summaryService}) async {
+    final index = _providers.indexWhere((p) => p.id == _activeProviderId);
+    if (index == -1) {
+      throw Exception('Không tìm thấy cấu hình Provider hiện tại.');
+    }
+
+    final provider = _providers[index];
+    final service = summaryService ?? SummaryService();
+
+    final apiKey = provider.apiKeys.isNotEmpty ? provider.apiKeys.first : null;
+
+    _isSyncingModels = true;
+    notifyListeners();
+
+    try {
+      final fetchedModels = await service.fetchModelsForProvider(
+        provider: provider,
+        apiKey: apiKey,
+      );
+
+      if (fetchedModels.isEmpty) {
+        throw Exception('Không tìm thấy model nào từ máy chủ ${provider.name}.');
+      }
+
+      String newSelected = provider.selectedModel;
+      if (!fetchedModels.contains(newSelected)) {
+        newSelected = fetchedModels.first;
+      }
+
+      _providers[index] = provider.copyWith(
+        models: fetchedModels,
+        selectedModel: newSelected,
+      );
+
+      await _saveProvidersToPrefs();
+      return fetchedModels.length;
+    } finally {
+      _isSyncingModels = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> addGeminiApiKey(String key) async {
     await addApiKeyToActiveProvider(key);
   }
 
-  Future<void> addApiKeyToActiveProvider(String key) async {
-    final clean = key.trim();
-    if (clean.isEmpty) return;
-
+  /// Thêm nhiều API Key cùng lúc vào Provider đang kích hoạt (hỗ trợ nhận danh sách hoặc chuỗi nhiều dòng)
+  Future<int> addApiKeysToActiveProvider(List<String> rawKeys) async {
     final index = _providers.indexWhere((p) => p.id == _activeProviderId);
-    if (index != -1) {
-      final current = _providers[index];
-      final updatedKeys = List<String>.from(current.apiKeys);
-      if (!updatedKeys.contains(clean)) {
-        updatedKeys.add(clean);
+    if (index == -1) return 0;
+
+    final current = _providers[index];
+    final updatedKeys = List<String>.from(current.apiKeys);
+    int addedCount = 0;
+
+    for (final raw in rawKeys) {
+      final lines = raw.split(RegExp(r'[\r\n]+'));
+      for (final line in lines) {
+        final clean = line.trim();
+        if (clean.isNotEmpty && !updatedKeys.contains(clean)) {
+          updatedKeys.add(clean);
+          addedCount++;
+        }
       }
+    }
+
+    if (addedCount > 0) {
       _providers[index] = current.copyWith(apiKeys: updatedKeys);
       await _saveProvidersToPrefs();
       notifyListeners();
     }
+    return addedCount;
+  }
+
+  Future<void> addApiKeyToActiveProvider(String key) async {
+    await addApiKeysToActiveProvider([key]);
   }
 
   Future<void> removeGeminiApiKey(String key) async {

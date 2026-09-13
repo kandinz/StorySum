@@ -37,7 +37,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int? _lastActiveSentenceIndex;
   AudioSourceType? _lastActiveSourceType;
   Timer? _chapterDebounceTimer;
-  StoryViewTab _activeTab = StoryViewTab.summary;
+  StoryViewTab _activeTab = StoryViewTab.content;
   NavTab _activeNavTab = NavTab.library;
   int _settingsInitialTabIndex = 0;
 
@@ -783,16 +783,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final isSummary = activeTab == StoryViewTab.summary;
     final sentences = isSummary ? appState.summarySentences : appState.contentSentences;
     final sourceType = isSummary ? AudioSourceType.summary : AudioSourceType.content;
-
-    if (isSummary &&
-        sentences.isEmpty &&
-        !appState.isProcessing &&
-        appState.hasActiveChapter &&
-        (appState.currentSummary == null || appState.currentSummary!.summaryText.trim().isEmpty)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        appState.autoSummarizeIfEmpty(settings);
-      });
-    }
 
     return SingleChildScrollView(
       controller: _scrollController,

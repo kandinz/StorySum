@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_story/models/ai_provider_model.dart';
 import 'package:app_story/providers/settings_provider.dart';
+import 'package:app_story/services/summary_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -180,5 +181,58 @@ void main() {
       expect(settings.aiProvider, 'Google Gemini');
       expect(settings.providers.any((p) => p.id == customId), isFalse);
     });
+
+    test('Add multiple API keys separated by newlines and duplicates filtering', () async {
+      await settings.setActiveProviderById('groq');
+      expect(settings.currentProviderApiKeys, isEmpty);
+
+      const multilineInput = """
+      gsk-key-1
+      
+      gsk-key-2
+      gsk-key-3
+      gsk-key-1
+      """;
+
+      final addedCount = await settings.addApiKeysToActiveProvider([multilineInput]);
+      expect(addedCount, 3);
+      expect(settings.currentProviderApiKeys, ['gsk-key-1', 'gsk-key-2', 'gsk-key-3']);
+
+      // Thêm lại một key đã có và 1 key mới
+      final addedCount2 = await settings.addApiKeysToActiveProvider(['gsk-key-2\ngsk-key-4']);
+      expect(addedCount2, 1);
+      expect(settings.currentProviderApiKeys, ['gsk-key-1', 'gsk-key-2', 'gsk-key-3', 'gsk-key-4']);
+    });
+
+    test('Sync models for active provider updates model list and selectedModel', () async {
+      await settings.setActiveProviderById('google-gemini');
+      final mockModels = [
+        'gemini-3.0-ultra',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+      ];
+
+      final mockService = _MockSummaryService(mockModels);
+      final syncedCount = await settings.syncModelsForActiveProvider(summaryService: mockService);
+
+      expect(syncedCount, 4);
+      expect(settings.currentProviderModels, mockModels);
+      expect(settings.isSyncingModels, isFalse);
+    });
   });
+}
+
+class _MockSummaryService extends SummaryService {
+  final List<String> mockModels;
+  _MockSummaryService(this.mockModels);
+
+  @override
+  Future<List<String>> fetchModelsForProvider({
+    required AiProviderModel provider,
+    String? apiKey,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    return mockModels;
+  }
 }

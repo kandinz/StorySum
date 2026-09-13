@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/summary_model.dart';
+import '../models/ai_provider_model.dart';
 import '../core/constants/app_constants.dart';
 
 class SummaryService {
@@ -474,5 +475,259 @@ class SummaryService {
       }
     }
     return bullets;
+  }
+
+  /// Lấy danh sách toàn bộ các Model khả dụng từ Provider từ xa qua REST API
+  Future<List<String>> fetchModelsForProvider({
+    required AiProviderModel provider,
+    String? apiKey,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final cleanDomain = provider.domain.trim();
+    final pId = provider.id.toLowerCase();
+    final pName = provider.name.toLowerCase();
+
+    // 1. Google Gemini
+    final isGemini = pId == 'google-gemini' ||
+        cleanDomain.contains('generativelanguage.googleapis.com') ||
+        (cleanDomain.isEmpty && pName.contains('gemini'));
+
+    if (isGemini) {
+      return _fetchGeminiModels(
+        apiKey: apiKey,
+        domain: cleanDomain.isNotEmpty ? cleanDomain : 'https://generativelanguage.googleapis.com',
+        timeout: timeout,
+      );
+    }
+
+    // 2. Anthropic Claude
+    final isClaude = pId == 'anthropic' ||
+        pId == 'claude' ||
+        cleanDomain.contains('api.anthropic.com') ||
+        pName.contains('claude');
+
+    if (isClaude) {
+      return _fetchAnthropicModels(
+        apiKey: apiKey,
+        domain: cleanDomain.isNotEmpty ? cleanDomain : 'https://api.anthropic.com/v1',
+        timeout: timeout,
+      );
+    }
+
+    // 3. OpenAI & OpenAI-compatible
+    return _fetchOpenAiCompatibleModels(
+      apiKey: apiKey,
+      domain: cleanDomain.isNotEmpty ? cleanDomain : 'https://api.openai.com/v1',
+      providerId: pId,
+      timeout: timeout,
+    );
+  }
+
+  Future<List<String>> _fetchGeminiModels({
+    String? apiKey,
+    required String domain,
+    required Duration timeout,
+  }) async {
+    var base = domain.trim();
+    if (!base.startsWith('http://') && !base.startsWith('https://')) {
+      base = 'https://$base';
+    }
+    while (base.endsWith('/')) {
+      base = base.substring(0, base.length - 1);
+    }
+
+    final keyParam = (apiKey != null && apiKey.trim().isNotEmpty) ? '?key=${apiKey.trim()}&pageSize=1000' : '?pageSize=1000';
+    final url = Uri.parse('$base/v1beta/models$keyParam');
+
+    final response = await http.get(url).timeout(timeout);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is Map<String, dynamic> && decoded['models'] is List) {
+        final List list = decoded['models'];
+        final models = <String>[];
+        for (final item in list) {
+          if (item is Map) {
+            final name = item['name']?.toString() ?? '';
+            final cleanName = name.replaceFirst(RegExp(r'^models/'), '');
+            final methods = item['supportedGenerationMethods'];
+            if (methods is List) {
+              if (methods.contains('generateContent') && cleanName.isNotEmpty) {
+                models.add(cleanName);
+              }
+            } else if (cleanName.isNotEmpty) {
+              models.add(cleanName);
+            }
+          }
+        }
+        if (models.isNotEmpty) {
+          return _dedupModels(models);
+        }
+      }
+      throw Exception('Không tìm thấy danh sách model trong phản hồi của Gemini.');
+    } else {
+      String errorMsg = 'HTTP ${response.statusCode}';
+      try {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map && decoded['error'] != null) {
+          errorMsg = decoded['error']['message'] ?? errorMsg;
+        }
+      } catch (_) {}
+      throw Exception('Lỗi lấy model từ Gemini: $errorMsg');
+    }
+  }
+
+  Future<List<String>> _fetchAnthropicModels({
+    String? apiKey,
+    required String domain,
+    required Duration timeout,
+  }) async {
+    if (apiKey == null || apiKey.trim().isEmpty) {
+      throw Exception('Cần có API Key của Anthropic để lấy danh sách model.');
+    }
+    var base = domain.trim();
+    if (!base.startsWith('http://') && !base.startsWith('https://')) {
+      base = 'https://$base';
+    }
+    while (base.endsWith('/')) {
+      base = base.substring(0, base.length - 1);
+    }
+    final url = Uri.parse(base.endsWith('/v1') ? '$base/models' : '$base/v1/models');
+
+    final response = await http.get(
+      url,
+      headers: {
+        'x-api-key': apiKey.trim(),
+        'anthropic-version': '2023-06-01',
+      },
+    ).timeout(timeout);
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+        final List list = decoded['data'];
+        final models = <String>[];
+        for (final item in list) {
+          if (item is Map) {
+            final id = item['id']?.toString() ?? '';
+            if (id.isNotEmpty) {
+              models.add(id);
+            }
+          }
+        }
+        if (models.isNotEmpty) {
+          return _dedupModels(models);
+        }
+      }
+      throw Exception('Không tìm thấy danh sách model trong phản hồi của Anthropic.');
+    } else {
+      String errorMsg = 'HTTP ${response.statusCode}';
+      try {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map && decoded['error'] != null) {
+          errorMsg = decoded['error']['message'] ?? errorMsg;
+        }
+      } catch (_) {}
+      throw Exception('Lỗi lấy model từ Anthropic: $errorMsg');
+    }
+  }
+
+  Future<List<String>> _fetchOpenAiCompatibleModels({
+    String? apiKey,
+    required String domain,
+    required String providerId,
+    required Duration timeout,
+  }) async {
+    var base = domain.trim();
+    if (!base.startsWith('http://') && !base.startsWith('https://')) {
+      base = 'https://$base';
+    }
+    while (base.endsWith('/')) {
+      base = base.substring(0, base.length - 1);
+    }
+
+    Uri url;
+    if (base.endsWith('/v1')) {
+      url = Uri.parse('$base/models');
+    } else {
+      url = Uri.parse('$base/v1/models');
+    }
+
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (apiKey != null && apiKey.trim().isNotEmpty) {
+      headers['Authorization'] = 'Bearer ${apiKey.trim()}';
+    }
+    if (providerId == 'openrouter') {
+      headers['HTTP-Referer'] = 'https://summarystory.app';
+      headers['X-Title'] = 'SummaryStory';
+    }
+
+    http.Response response;
+    try {
+      response = await http.get(url, headers: headers).timeout(timeout);
+    } catch (e) {
+      if (!base.endsWith('/v1')) {
+        url = Uri.parse('$base/models');
+        response = await http.get(url, headers: headers).timeout(timeout);
+      } else {
+        rethrow;
+      }
+    }
+
+    if (response.statusCode == 404 && !base.endsWith('/v1')) {
+      url = Uri.parse('$base/models');
+      response = await http.get(url, headers: headers).timeout(timeout);
+    }
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      final models = <String>[];
+
+      // Format chuẩn OpenAI: { "data": [ { "id": "..." } ] }
+      if (decoded is Map && decoded['data'] is List) {
+        for (final item in decoded['data']) {
+          if (item is Map) {
+            final id = item['id']?.toString() ?? '';
+            if (id.isNotEmpty) models.add(id);
+          }
+        }
+      }
+      // Format Ollama: { "models": [ { "name": "..." } ] }
+      else if (decoded is Map && decoded['models'] is List) {
+        for (final item in decoded['models']) {
+          if (item is Map) {
+            final name = item['name']?.toString() ?? item['id']?.toString() ?? '';
+            if (name.isNotEmpty) models.add(name);
+          }
+        }
+      }
+
+      if (models.isNotEmpty) {
+        return _dedupModels(models);
+      }
+      throw Exception('Không tìm thấy danh sách model trong phản hồi API.');
+    } else {
+      String errorMsg = 'HTTP ${response.statusCode}';
+      try {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map && decoded['error'] != null) {
+          errorMsg = decoded['error']['message'] ?? errorMsg;
+        }
+      } catch (_) {}
+      throw Exception('Lỗi lấy model từ $domain: $errorMsg');
+    }
+  }
+
+  static List<String> _dedupModels(List<String> rawModels) {
+    final seen = <String>{};
+    final list = <String>[];
+    for (final m in rawModels) {
+      final clean = m.trim();
+      if (clean.isNotEmpty && seen.add(clean)) {
+        list.add(clean);
+      }
+    }
+    return list;
   }
 }
