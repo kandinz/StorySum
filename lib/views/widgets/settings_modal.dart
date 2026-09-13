@@ -871,15 +871,6 @@ class _SettingsModalState extends State<SettingsModal> {
                 customColor: Colors.teal,
               ),
               const SizedBox(width: 6),
-              if (AiProviderModel.defaultBuiltinProviders.any((b) => b.id == settings.activeProviderId)) ...[
-                _buildActionButton(
-                  label: 'Khôi phục',
-                  icon: Icons.restart_alt_rounded,
-                  onTap: () => settings.resetProviderModels(settings.activeProviderId),
-                  colors: colors,
-                ),
-                const SizedBox(width: 6),
-              ],
               _buildActionButton(
                 label: 'Thêm Model',
                 icon: Icons.add_rounded,
